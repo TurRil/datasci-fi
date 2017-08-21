@@ -19,6 +19,11 @@ In this lesson we'll:
 3. introduce L2 regularization and bias terms, two ways of improving recommender systems based on matrix factorization.
 4. use these approaches to build a system for recommending movies to users based on their past viewing habits.
 
+This notebook is based quite closely on the following sources:
+
+* Chapter 22 of Joel Grus' ["Data Science from Scratch: First Principles with Python"](http://shop.oreilly.com/product/0636920033400.do). The (Python) code from the book is [here](https://github.com/joelgrus/data-science-from-scratch).
+* Part of [Lesson 4](http://course.fast.ai/lessons/lesson4.html) of the fast.ai course "Practical Deep Learning for Coders". There's a timeline of the lesson [here](http://wiki.fast.ai/index.php/Lesson_4_Timeline). Code (also in Python) is [here](https://github.com/fastai/courses/tree/master/deeplearning1).
+
 ### Load required packages and the dataset we created last lesson
 
 
@@ -57,7 +62,7 @@ There are lots of different similarity measures. The one we'll use is called cos
 
 ```{r}
 # function calculating cosine similarity
-cosine_sim <- function(a,b){crossprod(a,b)/sqrt(crossprod(a)*crossprod(b))}
+cosine_sim <- function(a,b){ crossprod(a,b) / sqrt(crossprod(a)*crossprod(b)) }
 ```
 
 Cosine similarity lies between 0 and 1 inclusive and increases with similarity. Here are a few test cases to get a feel for it:
@@ -89,31 +94,59 @@ cosine_sim(x1,x2)
 
 ```{r}
 # try an example from our data
-as.numeric(viewed_movies[1,]) # user 1's viewing history
-as.numeric(viewed_movies[2,]) # user 2's viewing history
-cosine_sim(viewed_movies[1,], viewed_movies[2,])
+as.numeric(viewed_movies["149",]) # user 1's viewing history
+as.numeric(viewed_movies["177",]) # user 2's viewing history
+cosine_sim(viewed_movies["149",], viewed_movies["177",])
 ```
 
-Let's get similarities between user pairs. We'll do this with a loop below, because its easier to see what's going, but this will be inefficient and very slow for bigger datasets. As an exercise, see if you can do the same without loops.
-
+Let's get similarities between user pairs. We'll do this with a loop below, because its easier to see what's going, but this will be inefficient and very slow for bigger datasets. As an exercise, see if you can do the same without loops
 
 ```{r}
 user_similarities = matrix(0, nrow = 15, ncol = 15)
 for(i in 1:14){
   for(j in (i+1):15){
-    user_similarities[i,j] <- cosine_sim(viewed_movies[i,], viewed_movies[j,])
+    user_similarities[i,j] <- cosine_sim(as.numeric(viewed_movies[i,]), as.numeric(viewed_movies[j,]))
   }
 }
+
 user_similarities <- user_similarities + t(user_similarities)
 diag(user_similarities) <- 0
 row.names(user_similarities) <- row.names(viewed_movies)
 colnames(user_similarities) <- row.names(viewed_movies)
 ```
 
+```{r}
+
+# Exercises:
+# 1. Adapt the pairwise similarity function so that it doesn't use loops.
+
+#cosine_sim <- function(a,b){ crossprod(a,b) / sqrt(crossprod(a)*crossprod(b)) }
+cosineDist <- function(x) {
+  #as.dist(x%*%t(x)/(sqrt(rowSums(x^2) %*% t(rowSums(x^2)))))
+  as.matrix( tcrossprod(x) / sqrt(rowSums(x^2) %*% t(rowSums(x^2))) ) 
+}
+b <- cosineDist(viewed_movies)
+row.names(b) <- row.names(viewed_movies)
+colnames(b) <- row.names(viewed_movies)
+#b
+```
+
+```{r}
+library(lsa)
+
+# by movie
+# cosine(viewed_movies)
+
+# by user
+c <- cosine(t(viewed_movies))
+diag(c) <- 0
+```
 
 ```{r}
 # who are the most similar users to user 149?
 user_similarities["149",]
+b["149",]
+c["149",]
 ```
 
 Let's see if this makes sense from the viewing histories. Below we show user 149's history, together with the user who is most similar to user 149 (user 303) and another user who is very dissimilar (user 236).
@@ -211,9 +244,9 @@ user_based_recommendations <- function(user, user_similarities, viewed_movies){
     select(-seen) 
   
   return(user_recom)
-  
 }
 ```
+
 
 Let's check the function is working by running it on a user we've used before:
 
@@ -233,6 +266,30 @@ A variant on the above is a *k-nearest-neighbours* approach that bases recommend
 
 
 *** TODO: implement this ***
+```{r}
+# Exercises:
+# 2. Implement a k-nearest-neighbours version of item-based collaborative filtering.
+
+intrain <- createDataPartition(as.numeric(rownames(viewed_movies)), p = 0.7, list = FALSE)
+training <- viewed_movies[intrain,]
+testing <- viewed_movies[-intrain,]
+```
+
+```{r}
+library(caret)
+
+data.train <- cbind(rownames(viewed_movies), as.data.frame(viewed_movies))
+colnames(data.train) <- paste(rep("m",ncol(data.train)),c(1:ncol(data.train)),sep="")
+names(data.train)[1] = "users"
+
+trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+
+knn_fit <- train(users ~ . , data = data.train, method = "knn",
+ trControl=trctrl,
+ preProcess = c("center", "scale"),
+ tuneLength = 10)
+
+```
 
 
 ## Item-based collaborative filtering
@@ -624,3 +681,13 @@ Finally, we again get predicted ratings for one user:
 # check predictions for one user
 rbind(round(predicted_ratings[1,],1), as.numeric(ratings_wide[1,]))
 ```
+
+
+## Exercises
+
+There are a few places in the notebook where an exercise is indicated. Specifically:
+
+1. Adapt the pairwise similarity function so that it doesn't use loops.
+2. Implement a k-nearest-neighbours version of item-based collaborative filtering.
+3. Adapt the `recommender_accuracy()` function so that it can be used with an arbitrary number of users and movies.
+4. Experiment with the optimizers used in the matrix factorization collaborative filter.

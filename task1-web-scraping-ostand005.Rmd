@@ -1,0 +1,389 @@
+---
+title: "Task 1 - Web Scraping"
+author: "Corné Oosthuizen - OSTAND005"
+date: ""
+output:
+  html_document:
+    toc: yes
+    toc_depth: 3
+keep_md: true
+---
+<style>
+    blockquote {
+      font-size: 1em;
+      margin-bottom: 0;
+    }
+    blockquote strong {
+      text-decoration: underline;
+    }
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+We might be interested in data that is not generally available in a neatly structured database or a simple `csv` file, the only place the data exists might be on some website. Well, how can we extract the text from a website and use it in our analysis?
+
+The technique we are discussing in the lesson is called **Web Scraping** (also termed Screen Scraping, Web Data Extraction, Web Harvesting etc.) is a technique employed to extract large amounts of data from websites and store it locally to process at a later stage.
+
+Extracting the text from a website will involve discovering the structure of the pages we are interested in (learning how the page is constructed) and then requesting the pages to extract the data parts we are interested in by using a R package called [rvest](https://cran.r-project.org/web/packages/rvest/).
+
+
+> **Important:**
+
+>  You need to consider the implications of extracting data from a website for one thing it might cause undue load on the servers hosting the website. So read the following to familiarise yourself with some of the ethical concerns involved:
+
+>  * [Ethics in Web Scraping](https://medium.com/towards-data-science/ethics-in-web-scraping-b96b18136f01)
+>  * [On the Ethics of Web Scraping and Data Journalism](http://gijn.org/2015/08/12/on-the-ethics-of-web-scraping-and-data-journalism/)
+
+
+## Structure of a Page
+
+All web pages on the web is delivered in a structured markup language called Hypertext Markup Language (**HTML**), it describes the content of a page in a structured markup language that can link / show additional content (the hypertext part). It was developed to be a language that can be read by a person and also easily interpreted by a browser to render it properly.
+
+This code block describes a simple web page written in **HTML**.  Notice that all the content (text) is wrapped with in HTML elements (represented by `tags` like `<h1>`).
+
+```{html, eval = FALSE}
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Page Title</title>
+  </head>
+  <body>
+  
+    <h1>This is a Heading</h1>
+    <p>This is a paragraph.</p>
+  
+    <a href="home.html">Link to Home page</a>
+  </body>
+</html>
+```
+
+Parts of the page:
+
+* `<!DOCTYPE html>` is called the document type declaration and it indicates that the page follows HTML version 5 rules for elements.
+* `<html>` is the root element of an HTML page and contains information on the `<title>` of the web page (shown as the heading of the browser tab the page is displayed on.
+* The `<body>` element contains the visible page content, this is where most of the important content will be found.
+* The `<h1>` element specifies that the text it contains is an important heading, similarly in descending order you might find `<h2>`,`<h3>`,`<h4>`,`<h5>`, and `<h6>`.
+* The `<p>` element defines a paragraph containing text.
+* The `<a>` element is called an anchor element/tag and defines a link to another web page.
+
+Now a web page consists of structured content (HTML) and style information, which is described in Cascading Style sheets (**CSS**). Understanding CSS is helpful when you create your own web pages but in our case all we need to know is that a element can have a `class` applied to it and that `class` describes the way the element will be rendered in a browser.
+
+> **Learn more:**
+
+>  Learning how to write your own web pages will help your web scraping efforts and also in improving your R Markdown skills, this is published as HTML and CSS :)
+
+>  * [W3schools - HTML Tutorial](https://www.w3schools.com/html/default.asp)
+>  * [W3schools - CSS Tutorial](https://www.w3schools.com/css/default.asp)
+>  * [SoloLearn - HTML Fundamentals](https://www.sololearn.com/Course/HTML/)
+>  * [SoloLearn - CSS Fundamentals](https://www.sololearn.com/Course/CSS/)
+
+***
+
+A web designer will use HTML structure to "markup" the content and CSS to make it look pretty.
+
+We can use the HTML elements and CSS classes to extract specific content from a web page structure.
+
+### What To Look For
+
+In a web page the html element will be nested inside other elements and some of these elements will have a unique id assigned to them and/or have CSS classes linked to them. The structure of the HTML can also be used to define a specific element. 
+
+Most sites generate their data from databases so the structure for articles, movies, house prices etc. will generally be described in a similar structure. Figuring that out is the first step in extracting the information we are interested in.
+
+Lets look at a extract from a page and see what we can find:
+
+```{html, eval = FALSE}
+<html>
+  ...
+  <body>
+  ...
+    <div class="articles">
+      <div id="first">
+        <h2>Incredible discovery in Data Science</h2>
+        <span class="author">Amazing Data Scientist Person</span>
+        
+        <p class="summary">Today it was discovered that ...</p>
+        
+        <p class="content">Today it was discovered that ...</p>
+        
+        <a href="#">[Read More]</a>
+      </div>
+      ...
+    </div>
+  ...
+  </body>
+</html>
+```
+
+So somewhere inside the `<body>` element this appears, some of the HTML elements might be unfamiliar, but it is not difficult to see that this extract describes an article, not only that but the _first_ article. We can also work out the `title`, who the `author` is and the `summary` and `content` of the article.
+
+The `<div>` element is just a container for other HTML elements, in this case it has some attributes that we are interested in namely the `id` and the `class`. The `id` attribute is a unique identifier for that element across the entire page and can be used to select a specific element. The `class` attribute refers to a CSS class that will give this element a style description when it is rendered by the browser and might apply to a number of elements across the entire page.
+
+> **Important:**
+> It might be that the `id` is not unique on a page as HTML is a interpreted language the browser compensates for this.
+
+***
+
+Let's extract the title of the first article, we can use:
+
+* The structure of the page `body div h2`, this might return some unwanted results because the structure might be used elsewhere for something other than the title of the first article.
+* Using CSS selection we can refer to the `class` attribute `.articles h2`, this might return ALL the titles of ALL the articles.
+* Using a combination of HTML elements and CSS classes we can get the specific text `.articles #first h2`
+
+Note the difference in referring to HTML elements (`h2`), CSS classes (`.articles`) and `id` attribute values (`#first`). To play around more with this concept try this fun game [CSS Diner](http://flukeout.github.io/) which help run through how selecting elements works.
+
+### Looking at a Real Page
+
+Open up the [Futurism](https://futurism.com/) page. The page is divided into a menu at the top containing the logo, 4 featured stories and then a list of the top stories for today.
+
+To view the source of page right clicking (Windows / Linux) or `Ctrl + Click` (Mac) on the web page to open the context menu, click on **View Source**. The browser will open up a window that displays the HTML source code of the web page. To see a specific element open the context menu while over the element and click on **Inspect Element**. The browser opens up the  code inspector window and highlights the selected element. Learning how to navigate the tree structure and the inspector tool will reduce the number of elements you select and make it easier to parse the data.
+
+At first reviewing the HTML source might seem daunting, reflect that the page does have a defined structure and with some careful revision it will become clear.
+
+Another useful tool for finding a particular element is the [SelectorGadget](http://selectorgadget.com/) tool, the video on the site explains how to use it and how to add it to your browser.
+
+First load the packages that we will need to extract our data.
+
+```{r, eval = TRUE, echo = TRUE, warning = FALSE, message = FALSE}
+library(rvest)
+library(tidyverse)
+library(stringr)
+```
+
+Functions we will be using:
+
+* The `read_html(url)` function takes the given URL and returns the HTML text in an object.
+* The `html_nodes(x, css, xpath)` function takes a object containing a HTML document and either CSS selection or XPath description. It extracts nodes from the HTML document and returns them as a node set (list of elements).
+* The `html_text(x, trim = FALSE)` function extracts attributes, text and tag name information from HTML.
+* The `html_table` function parses a HTML table into a data frame.
+
+##### What is XPath?
+XPath can be used to navigate through elements and attributes in an HTML document, this is similar to CSS selectors that we will be using in the next part to extract data from HTML elements. XPath is a defined query language and has functions that can be called to do additional refinement on selecting nodes. Learn how to use XPath by going through the [XPath Tutorial](https://www.w3schools.com/xml/xpath_intro.asp).
+
+Using the HTML article example, lets look at a couple of XPath expressions:
+
+```{html, eval = FALSE}
+<html>
+  ...
+  <body>
+  ...
+    <div class="articles">
+      <div id="first">
+        <h2>Incredible discovery in Data Science</h2>
+        <span class="author">Amazing Data Scientist Person</span>
+        
+        <p class="summary">Today it was discovered that ...</p>
+        
+        <p class="content">Today it was discovered that ...</p>
+        
+        <a href="#">[Read More]</a>
+      </div>
+      ...
+    </div>
+  ...
+  </body>
+</html>
+```
+
+XPath Expression  | Result
+----------------- | ---------------------------------------------------
+`/html/body/div/div[1]` | Return the first `div` inside the articles `div` element, our first article.
+`//div[@id='first']` | Return the `div` with a `id` attribute with the value of `first`, our first article.
+`/html/body/div/div[last()]` | Return the last `div` inside the articles `div` element, the last article.
+`//div[@id='articles']/div[last()]` | Return the last `div` inside the articles `div` element, the last article.
+`/html/body/div/div[last() - 1]` | Second to last article.
+`/html/body/div/div[position() < 3]` | Return the first 2 articles.
+`//span[@class='author']` | Return all the authors `span` elements. 
+
+
+##### What is a HTML table?
+In HTML data can be structured using a table, the `table` element consists of rows and cells (columns) and it correlates with a data frame in R, to learn more about the structure refer to the [W3schools - HTML Tables Tutorial](https://www.w3schools.com/html/html_tables.asp). Later on we will see how to extract data from a HTML table into a data frame.
+
+## Getting the Data (HTML)
+
+Let's get the home page of [Futurism](https://futurism.com/) with links to their current list of articles.
+
+```{r, eval = TRUE, echo = TRUE}
+home_page <- read_html("https://futurism.com/")
+home_page
+object.size(home_page)
+```
+
+The `home_page` object now contains the raw source the HTML. Now to show the `title` element of the page:
+
+```{r, eval = TRUE, echo = TRUE}
+
+# select the title node by using the css selection
+html_nodes(home_page, css = "title")
+
+# select the title node by using the XPath expression
+html_nodes(home_page, xpath = "/html/head/title")
+```
+
+Showing the 4 featured stories:
+
+```{r, eval = TRUE, echo = TRUE}
+
+html_nodes(home_page, css = "h3.featured-story-title")
+html_nodes(home_page, css = "header .featured-story h3")
+html_nodes(home_page, css = "body section header div div div div div h3")
+
+html_nodes(home_page, xpath = "//h3[@class='featured-story-title']")
+html_nodes(home_page, xpath = "//header//div[contains(@class,'featured-story')]//h3")
+html_nodes(home_page, xpath = "/html/body/section/header/div/div/div/div/div/h3")
+```
+
+Notice the number of ways to select the titles and that the `html_nodes` function returns the particular node and all the elements inside it.
+
+And if we just want the text:
+
+```{r, eval = TRUE, echo = TRUE}
+featured <- html_nodes(home_page, css = "h3.featured-story-title")
+
+html_text(featured, trim = FALSE)
+html_text(featured, trim = TRUE)
+```
+
+Sometime the text we get back from HTML will need to be cleaned up, using the `trim` argument with `html_text` removes the leading and trailing spaces from the nodes. Other characters to look out for are:
+
+Character | Description
+--------- | -----------
+&lt; | < - Less-Than Symbol
+&gt; | > - Greater-Than Symbol
+&amp;	| & - Ampersand, or 'and' sign
+&quot; | " - Quotation Mark
+&copy; | © - Copyright Symbol
+&trade;	| T - Trademark Symbol
+&nbsp; | A space (non-breaking space)
+&#??; | ISO 8859-1 character - replace ?? with the [iso code](http://www.simplehtmlguide.com/isocodes.php)
+
+## Getting the Data (XML)
+
+XML stands for eXtensible Markup Language (XML), it is very similar to HTML because it is also a markup language to describe content and it's structure. It was also designed to be human and machine readable, but unlike HTML the elements/tags that are used in XML can be user defined and do not need to follow a set naming convention. The tree structure that is defined in HTML is much more pronounced in XML as a XML document needs to be well-formed to be considered complete.
+
+```{r, out.width = "60px", out.extra='style="float:left; display: inline-block; margin-right: 1em;"', eval=TRUE, echo=FALSE}
+knitr::include_graphics("https://upload.wikimedia.org/wikipedia/en/thumb/4/43/Feed-icon.svg/128px-Feed-icon.svg.png")
+```
+
+The `rvest` package includes a method `read_xml` which is similar to `read_html` but only parses XML documents.
+
+Some sites publish a version of their sites content in a XML formatted file which describes their articles and/or pages in a standardized structured way, namely Rich Site Summary (RSS). The RSS format is relatively way to read and process. An example would look like:
+
+```{html}
+<?xml version="1.0" encoding="UTF-8" ?>
+<rss version="2.0">
+  <channel>
+   <title>RSS Title</title>
+   <description>This is an example of an RSS feed</description>
+   <link>http://www.example.com/main.html</link>
+   <lastBuildDate>Mon, 21 Aug 2017 00:08:00 +0000 </lastBuildDate>
+   <pubDate>Mon, 14 Aug 2017 16:00:00 +0000</pubDate>
+   <ttl>1800</ttl>
+  
+   <item>
+    <title>Example entry</title>
+    <description>Here is some text containing an interesting description.</description>
+    <link>http://www.example.com/blog/post/1</link>
+    <guid isPermaLink="true">7bd204c6-1655-4c27-aeee-53f933c5395f</guid>
+    <pubDate>Mon, 14 Aug 2017 16:00:00 +0000</pubDate>
+   </item>
+  
+  </channel>
+</rss>
+```
+
+This is very similar to HTML, the elements/tags are different but the structure is the same:
+
+* `<?xml version="1.0" encoding="UTF-8" ?>` the document will always start with this element, it is called the XML declaration and version.
+* `<rss>` is the root element of a RSS document.
+* The `<channel>` element contains the information for a group of pages and the details of a channel
+  * The `<title>` of the channel.
+  * The `<description>` of the channel.
+  * The `<link>` to the channel (website).
+  * `<lastBuildDate>` last time the RSS document was updated.
+  * `<pubDate>` the publication date for the channel.
+  * `<ttl>` the time-to-live of this channel, how long this data should be kept before it would be prudent to refresh it from the site.
+  
+* The `<item>` element contains the information of a article or item in the web site and is where we will gather most of our data.
+
+Looking at our example site, we can access the RSS feed and it returns:
+
+```{r, eval = TRUE, echo = TRUE}
+home_page_xml <- read_xml("https://futurism.com/feed/")
+home_page_xml
+object.size(home_page_xml)
+```
+
+So just like HTML we can extract the `<title>` of all the articles, it is much simpler than the HTML version because their aren't as many elements and JavaScript to consider:
+
+```{r, eval = TRUE, echo = TRUE}
+
+# select the title node by using the css selection
+html_nodes(home_page_xml, css = "item title") %>% html_text(trim = TRUE)
+
+# select the title node by using the XPath expression
+html_nodes(home_page_xml, xpath = "//item/title") %>% html_text(trim = TRUE)
+
+```
+
+Note that XML doesn't have CSS classes and the elements are different from the standard HTML elements.
+
+## Working with tables
+
+Using the F1 2017 champion statistics for each race we can extract the tables and see where each driver and constructor won their points.
+
+```{r, eval = TRUE, echo = TRUE}
+f1_stats <- read_html("http://www.statsf1.com/en/2017.aspx")
+f1_tables <- html_nodes(x = f1_stats, css = "table")
+f1_tables
+```
+
+```{r, eval = TRUE, echo = TRUE}
+
+f1_drivers <- html_table(f1_tables[[1]], header = TRUE, trim = TRUE, fill = TRUE)[,-1] %>% as.tibble()
+f1_constructors <- html_table(f1_tables[[2]], header = TRUE, trim = TRUE, fill = TRUE)[,-1] %>% as.tibble()
+
+head(f1_drivers)
+head(f1_constructors)
+```
+
+Another example that contains images inside the table (The class of the article), unfortunately the `html_table` method removes all HTML elements from the table including the images.
+
+```{r, eval = TRUE, echo = TRUE}
+wiki.html <- read_html("https://en.wikipedia.org/wiki/Wikipedia:Top_25_Report")
+```
+
+```{r, eval = TRUE, echo = TRUE}
+wiki.top <- html_nodes(x = wiki.html, css = "table") %>% .[[2]] %>% html_table(header = TRUE, trim = TRUE, fill = TRUE) %>% as.tibble()
+wiki.top
+```
+
+***
+
+Processing the table our own way:
+
+```{r, eval = TRUE, echo = TRUE}
+our_html_extract <- function (x) {
+
+ rank <- html_nodes(x, css = "td:nth-child(1)") %>% html_text()
+ title <- html_nodes(x, css = "td:nth-child(2)") %>% html_text()
+ link <- html_nodes(x, css = "td:nth-child(2)") %>% html_nodes(xpath = 'a/@href') %>% html_text()
+ cls_val <- html_nodes(x, css = "td:nth-child(3)") %>%  html_nodes(xpath = 'a/@title') %>% html_text()
+ views <- html_nodes(x, css = "td:nth-child(4)") %>% html_text() %>% str_replace_all(pattern = ",", replacement = "") %>% as.numeric()
+ #desc <- html_nodes(x, css = "td:nth-child(6)") %>% html_text()
+
+ return ( c(rank, title, cls_val, views)) #, desc) )
+}
+
+# Select all the rows ignoring the first one that contains the heading
+wiki.rows <- html_nodes(x = wiki.html, xpath = "//table[@class='wikitable']/tr[position() > 1]") %>% our_html_extract()
+#wiki.rows
+
+wiki.top <- data.frame(matrix(wiki.rows, nrow=25, byrow=FALSE))
+names(wiki.top) <- c("Rank", "Article", "Class", "Views") #, "Description") - Without description displays better
+
+wiki.top
+```

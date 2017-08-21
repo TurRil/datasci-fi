@@ -1,0 +1,292 @@
+---
+title: "lesson1-exercises"
+author: "Corné Oosthuizen - OSTAND005"
+date: "17 August 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Exercises
+
+Do the exercises in [Chapter 5](http://r4ds.had.co.nz/transform.html) (data transformation using the **dplyr** verbs) and 
+[Chapter 13](http://r4ds.had.co.nz/relational-data.html) (on database joins) of R4DS. 
+
+### Chapter 5
+
+```{r}
+suppressWarnings(suppressMessages(library(nycflights13)))
+suppressWarnings(suppressMessages(library(tidyverse)))
+
+flights
+```
+
+
+```{r}
+sqrt(2) ^ 2
+sqrt(2) ^ 2 == 2
+#> [1] FALSE
+1/49 * 49
+1/49 * 49 == 1
+#> [1] FALSE
+```
+
+```{r}
+near(sqrt(2) ^ 2,  2)
+#> [1] TRUE
+near(1 / 49 * 49, 1)
+#> [1] TRUE
+```
+
+### 5.2.4 Exercises - `filter()`
+
+1. Find all flights that
+
+* Had an arrival delay of two or more hours
+```{r}
+filter(flights, arr_delay >= 120)
+```
+
+* Flew to Houston (IAH or HOU)
+```{r}
+filter(flights, dest == 'IAH' | dest == 'HOU')
+filter(flights, dest %in% c("IAH", "HOU"))
+```
+* Were operated by United, American, or Delta
+```{r}
+levels(as.factor(flights$carrier))
+filter(flights, carrier == 'UA' | carrier == 'AA' | carrier == 'DL')
+filter(flights, carrier %in% c("UA","AA","DL"))
+```
+* Departed in summer (July, August, and September)
+```{r}
+summary(filter(flights, month %in% c(7,8,9))$month)
+summary(filter(flights, month == 7 | month == 8 | month == 9)$month)
+summary(filter(flights, month >= 7 & month <= 9)$month)
+summary(filter(flights, month >= 7, month <= 9)$month)
+
+```
+
+* Arrived more than two hours late, but didn't leave late
+```{r}
+summary(filter(flights, arr_delay > 120, dep_delay <= 0) %>% select(arr_delay, dep_delay))
+```
+
+* Were delayed by at least an hour, but made up over 30 minutes in flight
+```{r}
+filter(flights, dep_delay >= 60, dep_delay - arr_delay > 30)
+```
+
+* Departed between midnight and 6am (inclusive)
+```{r}
+summary(select(flights, dep_time))
+filter(flights, dep_time == 2400 | dep_time <= 600) %>% arrange(desc(dep_time))
+```
+
+2. Another useful dplyr filtering helper is between(). What does it do? Can you use it to simplify the code needed to answer the previous challenges?
+
+* Departed in summer (July, August, and September)
+```{r}
+summary(filter(flights, month %in% c(7,8,9))$month)
+summary(filter(flights, between(month, 6, 9))$month)
+```
+
+* Departed between midnight and 6am (inclusive)
+```{r}
+dim(filter(flights, dep_time == 2400 | dep_time <= 600))
+dim(filter(flights, !between(dep_time, 601, 2359)))
+```
+
+3. How many flights have a missing dep_time? What other variables are missing? What might these rows represent?
+```{r}
+count( filter(flights, is.na(dep_time)) )
+```
+```{r}
+summary(flights)
+```
+`dep_time`: Either have not departed yet or will never depart.
+`dep_delay`: likewise because the flight did not depart will have no departure delay.
+`arr_time`: includes flights that did not depart, and might never have arrived.
+`arr_delay`: same as above
+`air_time`: same as above
+
+Incomplete data.
+
+4. Why is NA ^ 0 not missing? Why is NA | TRUE not missing? Why is FALSE & NA not missing? Can you figure out the general rule? (NA * 0 is a tricky counterexample!)
+
+```{r}
+(NA ^ 0)
+```
+anything to the power of 0 is 1 - TRUE
+
+```{r}
+(NA | TRUE)
+```
+not available OR TRUE - evaluate to TRUE
+
+```{r}
+(FALSE & NA)
+```
+FALSE & not avialable is FALSE - anything AND FALSE will be FALSE
+
+```{r}
+(NA * 0)
+```
+ `NA` represents an unknown value so missing values are "contagious": almost any operation involving an unknown value will also be unknown.
+
+
+### 5.3.1 Exercises - `arrange()`
+
+1. How could you use arrange() to sort all missing values to the start? (Hint: use is.na()).
+
+```{r}
+df <- tibble(x = c(5, 2, NA))
+arrange(df, desc(is.na(x)))
+arrange(df, -(is.na(x)))
+```
+
+2. Sort flights to find the most delayed flights. Find the flights that left earliest.
+```{r}
+arrange(flights, desc(dep_delay))
+arrange(flights, dep_delay)
+```
+
+3. Sort flights to find the fastest flights.
+```{r}
+arrange( flights, air_time)
+```
+
+4. Which flights travelled the longest? Which travelled the shortest
+```{r}
+arrange(flights, desc(distance)) %>% select(tailnum, distance)
+arrange(flights, distance) %>% select(tailnum, distance)
+```
+
+### 5.4.1 Exercises - `select()`
+
+There are a number of helper functions you can use within select():
+
+* starts_with("abc"): matches names that begin with "abc". (starts with a prefix - `starts_with(match, ignore.case = TRUE, vars = current_vars())`)
+
+* ends_with("xyz"): matches names that end with "xyz". (ends with a prefix - `ends_with(match, ignore.case = TRUE, vars = current_vars())`)
+
+* contains("ijk"): matches names that contain "ijk". (contains a literal string - `contains(match, ignore.case = TRUE, vars = current_vars())`)
+
+* matches("(.)\\1"): selects variables that match a regular expression. This one matches any variables that contain repeated characters. You'll learn more about regular expressions in strings. (matches a regular expression - `matches(match, ignore.case = TRUE, vars = current_vars())`)
+
+* num_range("x", 1:3) matches x1, x2 and x3. (a numerical range like x01, x02, x03 - `num_range(prefix, range, width = NULL, vars = current_vars())`)
+
+* one_of(): variables in character vector.
+
+* everything(): all variables.
+
+
+1. Brainstorm as many ways as possible to select dep_time, dep_delay, arr_time, and arr_delay from flights.
+
+```{r}
+dim( select(flights, dep_time, dep_delay, arr_time, arr_delay) )
+dim( select(flights, starts_with("dep"), starts_with("arr")) )
+dim( select(flights, matches("^(dep|arr)")) )
+```
+
+
+2. What happens if you include the name of a variable multiple times in a select() call?
+```{r}
+select(flights, dep_time, dep_time)
+```
+
+Only get the column once.
+
+3. What does the one_of() function do? Why might it be helpful in conjunction with this vector?
+```{r}
+vars <- c("year", "month", "day", "dep_delay", "arr_delay")
+
+select(flights, vars)
+select(flights, one_of(vars))
+```
+
+`one_of()`: variables in character vector - so the list of column names returned.
+
+4. Does the result of running the following code surprise you? How do the select helpers deal with case by default? How can you change that default?
+
+```{r}
+select(flights, contains("TIME"))
+```
+
+No, `contains(match, ignore.case = TRUE, vars = current_vars())` by default ignores the case of the match string, this can be changed by overwriting the `ignore.case` variable.
+
+```{r}
+select(flights, contains("TIME", ignore.case = FALSE))
+```
+
+### 5.5.2 Exercises - `mutate()` and `transmute()`
+
+1. Currently dep_time and sched_dep_time are convenient to look at, but hard to compute with because they're not really continuous numbers. Convert them to a more convenient representation of number of minutes since midnight.
+
+```{r}
+select(flights, dep_time, sched_dep_time) %>%
+  mutate( dep_time_st = str_c(str_sub(dep_time,1,-3), str_sub(dep_time,-2,-1), sep = ":"),
+          sched_dep_time_st = str_c(str_sub(sched_dep_time,1,-3), str_sub(sched_dep_time,-2,-1), sep = ":"),
+          dep_time_min = (dep_time %/% 100)*60 + (dep_time %% 100), 
+          sched_dep_time_min = (sched_dep_time %/% 100)*60 + (sched_dep_time %% 100))
+```
+
+2. Compare `air_time` with `arr_time - dep_time`. What do you expect to see? What do you see? What do you need to do to fix it?
+```{r}
+select(flights, dep_time, arr_time, air_time) %>%
+  mutate( dep_time_min = (dep_time %/% 100)*60 + (dep_time %% 100),
+          arr_time_min = (arr_time %/% 100)*60 + (arr_time %% 100),
+          real_air_time = (arr_time_min - dep_time_min) %% (60*24),
+          flight_diff = real_air_time - air_time) %>%
+  arrange(real_air_time)
+```
+* Well we expect to see a numerical representation of the flight time that matches `air_time`, we get a difference and in some cases a alrge negative value.
+* The negative value is due to flights that start before midnight and land after (next day) so the `real_air_time` should take into account that a day might have passed.
+* There is still some inaccuracy between `air_time` and `real_air_time` and might be due to the measurement of what `air_time` is, actual flight time or take-off and landing included.
+
+3. Compare `dep_time`, `sched_dep_time`, and `dep_delay`. How would you expect those three numbers to be related?
+
+```{r}
+
+select(flights, dep_time, sched_dep_time, dep_delay) %>%
+  mutate( dep_time_min = (dep_time %/% 100)*60 + (dep_time %% 100),
+          sched_dep_time_min = (sched_dep_time %/% 100)*60 + (sched_dep_time %% 100)) %>%
+  #arrange(desc(real_dep_delay))
+  transmute(real_dep = near((sched_dep_time_min + dep_delay) %% (60*24), dep_time_min, tol=1)) %>% # take into account next day and tolerance of 1
+  summary()  
+
+```
+`sched_dep_time` + `dep_delay` = `dep_time`
+
+So mostly the scheduled and departure times match up.
+
+4. Find the 10 most delayed flights using a ranking function. How do you want to handle ties? Carefully read the documentation for min_rank().
+
+What does 1:3 + 1:10 return? Why?
+
+What trigonometric functions does R provide?
+
+
+1. Refer back to the lists of useful **mutate** and **filtering** functions. Describe how each operation changes when you combine it with grouping.
+
+`group_by()` changes the scope of each function from operating on the entire dataset to operating on it group-by-group.
+
+
+
+
+2. Which plane (tailnum) has the worst on-time record?
+
+What time of day should you fly if you want to avoid delays as much as possible?
+
+For each destination, compute the total minutes of delay. For each, flight, compute the proportion of the total delay for its destination.
+
+Delays are typically temporally correlated: even once the problem that caused the initial delay has been resolved, later flights are delayed to allow earlier flights to leave. Using lag() explore how the delay of a flight is related to the delay of the immediately preceding flight.
+
+Look at each destination. Can you find flights that are suspiciously fast? (i.e. flights that represent a potential data entry error). Compute the air time a flight relative to the shortest flight to that destination. Which flights were most delayed in the air?
+
+Find all destinations that are flown by at least two carriers. Use that information to rank the carriers.
+
+For each plane, count the number of flights before the first delay of greater than 1 hour.
+

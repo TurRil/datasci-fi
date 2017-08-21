@@ -1,0 +1,392 @@
+---
+title: "transform_solutions"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(nycflights13)
+library(ggplot2)
+```
+# look at flights data
+```{r}
+flights 
+```
+
+# 4.2.4 Exercises
+### 1. Find all flights that
+#### 1.1. Had an arrival delay of two or more hours.
+```{r}
+filter(flights, arr_delay>=120)
+```
+
+#### 1.2. Flew to Houston (`IAH` or `HOU`)
+```{r}
+filter(flights, dest == 'IAH' | dest == 'HOU')
+filter(flights, dest %in% c('IAH', 'HOU'))
+```
+
+#### 1.3. Were operated by United, American, or Delta
+```{r}
+filter(flights, carrier == 'UA' | carrier == 'AA' | carrier == 'DL')
+filter(flights, carrier %in% c('UA', 'AA', 'DL'))
+```
+
+#### 1.4. Departed in summer (July, August, and September)
+```{r}
+filter(flights, month >= 7 & month <= 9)
+filter(flights, month %in% c(7, 8, 9))
+```
+
+#### 1.5. Arrived more than two hours late, but didn't leave late
+```{r}
+filter(flights, arr_delay > 120, dep_delay <= 0)
+```
+
+#### 1.6. Were delayed by at least an hour, but made up over 30 minutes in flight
+```{r}
+filter(flights, dep_delay >= 60, dep_delay-arr_delay > 30)
+```
+
+#### 1.7. Departed between midnight and 6am (inclusive)
+```{r}
+filter(flights, dep_time <=600 | dep_time == 2400)
+```
+
+### 2. Another useful dplyr filtering helper is `between()`. What does it do? Can you use it to simplify the code needed to answer the previous challenges?
+Between is a shorter, faster way of testing two inequalities at once: it tests if its first argument is greater than or equal to its second, and less than or equal to its third.
+```{r}
+filter(flights, between(month, 7, 9))
+filter(flights, !between(dep_time, 601, 2359))
+```
+
+### 3. How many flights have a missing `dep_time`? What other variables are missing? What might these rows represent?
+```{r}
+summary(flights)
+```
+
+8255 flights have a missing `dep_time`, 8255 have a missing `dep_delay`, 8713 have a missing `arr_time`, 9430 have a missing `arr_delay`, and 9430 have a missing `air_time`. We can speculate that these are flights that failed to depart or arrive, since a flight that departs normally but is then rerouted will probably have a normally recorded departure but no similar record for it's arrival. However, these could also just be lost data about perfectly normal flights.
+
+### 4. Why is `NA ^ 0` not missing? Why is `NA | TRUE` not missing? Why is `FALSE & NA` not missing? Can you figure out the general rule?  (`NA * 0` is a tricky counterexample!)
+`NA ^ 0` evaluates to 1 because anything to the power of 0 is 1, so although we didn't know the original value, we know it's being taken to the zeroth power. 
+
+With `NA | TRUE`, since the `|` operator returns `TRUE` if either of the terms are true, the whole expression returns true because the right half returns true. This is easier to see in an expression like `NA | 5<10` (since 5 is indeed less than 10).
+
+For the next example, we know that `&` returns TRUE when both terms are true. So, for example, `TRUE & TRUE` evaluates to `TRUE`. In `FALSE & NA`, one of the terms is false, so the expression evaluates to `FALSE`. As does something like `FALSE & TRUE`.
+
+`NA * 0` could be argued to be because the NA could represent `Inf`, and `Inf * 0` is `NaN` (Not a Number), rather than `NA`. However, I suspect that these results are dictated as much by what answer is natural, quick and sensible in C as by mathematical edge cases.
+
+
+# 4.3.1 Exercises
+### 1. How could you use `arrange()` to sort all missing values to the start? (Hint: use `is.na()`).
+```{r}
+df <- tibble(x = c(5, 2, NA))
+arrange(df, desc(is.na(x)))
+arrange(df, -(is.na(x)))
+
+```
+
+### 2. Sort flights to find the most delayed flights. Find the flights that left earliest.
+```{r}
+arrange(flights, desc(dep_delay))
+arrange(flights, dep_delay)
+
+```
+
+### 3. Sort flights to find the fastest flights.
+```{r}
+# Note - this is a bit tricky since the time stamps are just encoded as integers
+# so if a flight left at midnight (i.e. dep_time=2400) and arrived at 00:54 (arr_time=54),
+# it's hard to just do arr_time - dep_time to get the travel time (you get back -2346, which doesn't make sense). 
+# Taking absolute values doesn't help either.
+# A workaround solution is just to add 2400 if the travel time is ever negative.
+# A better solution is to properly encode the times as timestamps
+# note: we use the `mutate` function and the pipe character `%>%`, which haven't been introduced yet
+
+flights %>% mutate(travel_time = ifelse((arr_time - dep_time < 0), 
+                                        2400+(arr_time - dep_time),
+                                        arr_time - dep_time)) %>% 
+  arrange(travel_time) %>% select(arr_time, dep_time, travel_time)
+
+# for demonstration purposes, the naive solution is
+arrange(flights, (arr_time - dep_time))
+
+```
+
+### 4. Which flights travelled the longest? Which travelled the shortest?
+```{r}
+# note: the `%>% select(1:5, distance)` is just so we can see the distance column, 
+# which otherwise gets pushed off the console screen
+arrange(flights, desc(distance)) %>% select(1:5, distance)
+arrange(flights, distance) %>% select(1:5, distance)
+
+```
+
+# 4.4.1 Exercises
+### 1. Brainstorm as many ways as possible to select `dep_time`, `dep_delay`, `arr_time`, and `arr_delay` from flights.
+```{r}
+# standard ways
+select(flights, dep_time,  dep_delay, arr_time, arr_delay)
+select(flights, c(dep_time,  dep_delay, arr_time, arr_delay))
+flights %>% select(dep_time,  dep_delay, arr_time, arr_delay)
+flights %>% select_("dep_time",  "dep_delay", "arr_time", "arr_delay")
+flights %>% select_(.dots=c("dep_time",  "dep_delay", "arr_time", "arr_delay"))
+
+# fancier ways
+flights %>% select(dep_time:arr_delay, -c(contains("sched")))
+flights %>% select(ends_with("time"),  ends_with("delay")) %>% select(-c(starts_with("sched"), starts_with("air")))
+flights %>% select(contains("dep"), contains("arr"), -contains("sched"), -carrier)
+flights %>% select(matches("^dep|arr_delay|time$"))
+flights %>% select(matches("^dep|^arr"))
+flights %>% select(matches("^dep|^arr.*time$|delay$"))
+flights %>% select(matches("^dep|^arr_time$|delay$"))
+
+head(flights)
+```
+
+### 2. What happens if you include the name of a variable multiple times in a `select()` call?
+```{r}
+flights %>% select(dep_delay, dep_delay, dep_delay)
+```
+Nothing happens, you just get the variable once.
+
+### 3. What does the `one_of()` function do? Why might it be helpful in conjunction with this vector?
+It returns all the variables you ask for, for example ones stored in a vector.
+```{r}
+vars <- c("year", "month", "day", "dep_delay", "arr_delay")
+flights %>% select(one_of(vars))
+```
+
+### 4. Does the result of running the following code surprise you? How do the select helpers deal with case by default? How can you change that default?
+```{r}
+select(flights, contains("TIME"))
+select(flights, contains("TIME", ignore.case = FALSE))
+```
+The default helper functions are insensitive to case. This can be changes by setting `ignore.case=FALSE`.
+
+head(flights)
+# 4.5.2 Exercises
+### 1. Currently `dep_time` and `sched_dep_time` are convenient to look at, but hard to compute with because they’re not really continuous numbers. Convert them to a more convenient representation of number of minutes since midnight.
+```{r}
+# with integer division
+mutate(flights,
+       dep_time = (dep_time %/% 100) * 60 + (dep_time %% 100),
+       sched_dep_time = (sched_dep_time %/% 100) * 60 + (sched_dep_time %% 100))
+
+# with rounding operations
+mutate(flights,
+       dep_time = 60 * floor(dep_time/100) + (dep_time - floor(dep_time/100) * 100),
+       sched_dep_time = 60 * floor(sched_dep_time/100) + (sched_dep_time - floor(sched_dep_time/100) * 100))
+
+```
+
+### 2. Compare `air_time` with `arr_time - dep_time`. What do you expect to see? What do you see? What do you need to do to fix it?
+- Firstly, we notice that if `arr_time` is in clock format, but `dep_time` is in minutes-after-midnight format, as per the previous question, we get the wrong answer. Obviously converting `arr_time` to minutes-after-midnight solves this problem.
+- Second, we find that some of the results of `arr_time - dep_time` are large negative numbers. This occurs when a flight sets off before midnight but arrives after it. We can deal with this by using modular arithmetic again (and assuming that no flights take off before midnight and land after midnight the day after.)
+- Finally, we find that `arr_time - dep_time` can vary significantly from `air_time`. 
+```{r}
+flights %>% 
+  mutate(dep_time = (dep_time %/% 100) * 60 + (dep_time %% 100),
+         sched_dep_time = (sched_dep_time %/% 100) * 60 + (sched_dep_time %% 100),
+         arr_time = (arr_time %/% 100) * 60 + (arr_time %% 100),
+         sched_arr_time = (sched_arr_time %/% 100) * 60 + (sched_arr_time %% 100)) %>%
+  transmute((arr_time - dep_time) %% (60*24) - air_time)
+
+```
+
+### 3. Compare `dep_time`, `sched_dep_time`, and `dep_delay`. How would you expect those three numbers to be related?
+We would expect to find that `sched_dep_time + dep_delay == dep_time`. We find that in the vast majority of cases (99.99%), this is true.
+```{r}
+flights %>% 
+  mutate(dep_time = (dep_time %/% 100) * 60 + (dep_time %% 100),
+         sched_dep_time = (sched_dep_time %/% 100) * 60 + (sched_dep_time %% 100),
+         arr_time = (arr_time %/% 100) * 60 + (arr_time %% 100),
+         sched_arr_time = (sched_arr_time %/% 100) * 60 + (sched_arr_time %% 100)) %>%
+  transmute(near((sched_dep_time + dep_delay) %% (60*24), dep_time, tol=1))
+
+```
+
+### 4. Find the 10 most delayed flights using a ranking function. How do you want to handle ties? Carefully read the documentation for min_rank().
+There aren't actually any ties in the top 10 most delayed flights for departure and arrival, but if there had been a tie for 10th place, then min_rank could have produced more than 10 results. It is still the most honest method here, though, since it is better to produce a result that highlights a corner case like a tie than a result that hides it. 
+```{r}
+filter(flights, min_rank(desc(dep_delay))<=10)
+flights %>% top_n(n = 10, wt = dep_delay)
+```
+
+### 5. What does `1:3 + 1:10` return? Why?
+`1:3 + 1:10` produces a length 10 vector and a warning message. This is because the shorter vector is repeated out to the length of the longer one. Because 10 doesn't divide exactly by 3, the vectors do not line up properly and we get an error. This automatic vector extension is most commonly useful when one of the vectors is of length 1.
+
+### 6. What trigonometric functions does R provide?
+```{r}
+?Trig
+```
+Using `?Trig`, we can find a list of trigonometric functions provided by base R. Examples include `cos(x)`, `acos(x)`, `cospi(x)`.
+
+
+# 4.6.7 Exercises
+### 1. Brainstorm at least 5 different ways to assess the typical delay characteristics of a group of flights. Consider the following scenarios:
+# A flight is 15 minutes early 50% of the time, and 15 minutes late 50% of the time.
+# A flight is always 10 minutes late.
+# A flight is 30 minutes early 50% of the time, and 30 minutes late 50% of the time.
+# 99% of the time a flight is on time. 1% of the time it’s 2 hours late.
+# Which is more important: arrival delay or departure delay?
+
+We're not clear what this question means. Assuming we are interested in *arrival* delays, we can calculate the following summary variables for all flights:
+
+```{r}
+str(flights)
+head(flights)
+flight_delay_summary <- group_by(flights, flight) %>% summarise(num_flights = n(),
+                                                                percentage_on_time = sum(arr_time == sched_arr_time)/num_flights,
+                                                                percentage_early = sum(arr_time < sched_arr_time)/num_flights, 
+                                                                percentage_15_mins_early = sum(sched_arr_time - arr_time == 15)/num_flights,
+                                                                percentage_late = sum(arr_time > sched_arr_time)/num_flights,
+                                                                percentage_15_mins_late = sum(arr_time - sched_arr_time == 15)/num_flights,
+                                                                percentage_2_hours_late = sum(arr_time - sched_arr_time == 120)/num_flights)
+flight_delay_summary
+```
+
+Using this, we can then answer the preceding questions, e.g. a flight that is 15 minutes early 50% of the time, and 15 minutes late 50% of the time can be found using:
+
+```{r}
+flight_delay_summary %>% filter(percentage_15_mins_early == 0.5 & percentage_15_mins_late == 0.5)
+
+```
+
+As for whether arrival delay or departure delay is more important - from the individual perspective this may be a matter of personal taste, and from the business perspective we would need data on associated costs of both types of delay (monetary, customer satisfaction hits, etc.) to reason about relative importance.
+
+### 2. Come up with another appraoch that will give you the same output as `not_cancelled %>% count(dest)` and `not_cancelled %>% count(tailnum, wt = distance)` (without using `count()`).
+```{r}
+not_cancelled <- filter(flights, !is.na(dep_delay), !is.na(arr_delay))
+
+not_cancelled %>%
+  group_by(dest) %>%
+  tally()
+
+not_cancelled %>%
+  group_by(tailnum) %>%
+  summarise(n = sum(distance))
+```
+
+Using `group_by` and `summarise` instead of `count` is more verbose, but it can be clearer, especially in more complex situations.
+
+### 3. Our definition of cancelled flights (`!is.na(dep_delay) & !is.na(arr_delay)`) is slightly suboptimal. Why? Which is the most important column?
+There are no flights which arrived but did not depart, so we can just use `!is.na(dep_delay)`.
+```{r}
+flights %>%
+    group_by(departed = !is.na(dep_delay), arrived = !is.na(arr_delay)) %>%
+    summarise(n=n())
+
+```
+
+### 4. Look at the number of cancelled flights per day. Is there a pattern? Is the proportion of cancelled flights related to the average delay?
+```{r}
+flights %>%
+  mutate(dep_date = lubridate::make_datetime(year, month, day)) %>%
+  group_by(dep_date) %>%
+  summarise(cancelled = sum(is.na(dep_delay)), 
+            n = n(),
+            mean_dep_delay = mean(dep_delay,na.rm=TRUE),
+            mean_arr_delay = mean(arr_delay,na.rm=TRUE)) %>%
+    ggplot(aes(x= cancelled/n)) + 
+    geom_point(aes(y=mean_dep_delay), colour='blue', alpha=0.5) + 
+    geom_point(aes(y=mean_arr_delay), colour='red', alpha=0.5) + 
+    ylab('mean delay (minutes)')
+```
+
+We can see that on most days, there is not a strong relationship between cancellations and delay, but if one is unusually high, then the other probably is, too.
+
+### 5. Which carrier has the worst delays? Challenge: can you disentangle the effects of bad airports vs. bad carriers? Why/why not? (Hint: think about `flights %>% group_by(carrier, dest) %>% summarise(n())`)
+There are 16 carriers, 3 origin airports, and 105 destination airports in this dataset. For many destination airports, there are only one or two carriers that fly there, so it is difficult to tell how much of the delay is due to the carrier, and how much is due to the airport (busy destination airports can force planes to loiter longer before there is a free landing slot). We also can't necessarily tell how much of the delay is due to the route, versus the airport itself. This makes attributing the cause of in flight delays difficult.
+```{r}
+flights %>%
+    filter(arr_delay > 0) %>%
+    group_by(carrier) %>%
+    summarise(average_arr_delay = mean(arr_delay, na.rm=TRUE)) %>%
+    arrange(desc(average_arr_delay))
+
+flights %>%
+  summarise(n_distinct(carrier),
+            n_distinct(origin),
+            n_distinct(dest))
+
+```
+
+### 6. For each plane, count the number of flights before the first delay of greater than 1 hour.
+```{r}
+flights %>%
+    mutate(dep_date = lubridate::make_datetime(year, month, day)) %>%
+    group_by(tailnum) %>%
+    arrange(dep_date) %>%
+    filter(!cumany(arr_delay>60)) %>%
+    tally(sort = TRUE)
+```
+
+### 7. What does the sort argument to count() do. When might you use it?
+The `sort` argument to `count()` sorts by descending order of `n`. This is useful because often the most common group is the most important.
+
+
+# 4.7.1 Exercises
+### 1. Refer back to the table of useful mutate and filtering functions. Describe how each operation changes when you combine it with grouping.
+Which one?
+
+# 2. Which plane (tailnum) has the worst on-time record?
+```{r}
+flights %>%
+  group_by(tailnum) %>%
+  summarise(prop_on_time = sum(arr_delay <= 30 & !is.na(arr_delay))/n(),
+            mean_arr_delay = mean(arr_delay, na.rm=TRUE),
+            flights = n()) %>%
+  arrange(prop_on_time, desc(mean_arr_delay))
+
+flights %>%
+  group_by(tailnum) %>%
+  filter(all(is.na(arr_delay))) %>%
+    tally(sort=TRUE)
+```
+
+Many of the planes have never arrived on time, and 7 have never arrived at all. These are planes for which we do not have much data, so there's no clear answer to the worst plane unless we limit ourselves to some arbitrary threshold of number of recorded flights.
+
+# 3. What time of day should you fly if you want to avoid delays as much as possible?
+```{r}
+flights %>%
+    ggplot(aes(x=factor(hour), fill=arr_delay>5 | is.na(arr_delay))) + geom_bar()
+```
+
+We can see that the highest probability of delay as a proportion of total flights is in the late evening. We could hypothesize that this is due to accumulated knockon delays during the day, the difficulties of flying at night, or these flights being typically longer distance.
+
+# 4. Delays are typically temporally correlated: even once the problem that caused the initial delay has been resolved, later flights are delayed to allow earlier flights to leave. Using `lag()` explore how the delay of a flight is related to the delay of the immediately preceding flight.
+```{r}
+flights %>%
+  mutate(new_sched_dep_time = lubridate::make_datetime(year, month, day, hour, minute)) %>%
+  group_by(origin) %>%
+  arrange(new_sched_dep_time) %>%
+  mutate(prev_flight_dep_delay = lag(dep_delay)) %>%
+  ggplot(aes(x=prev_flight_dep_delay, y= dep_delay)) + geom_point()
+  
+
+```
+
+# 5. Look at each destination. Can you find flights that are suspiciously fast? (i.e. flights that represent a potential data entry error). Compute the air time a flight relative to the shortest flight to that destination. Which flights were most delayed in the air?
+```{r}
+flights %>%
+  mutate(new_sched_dep_time = lubridate::make_datetime(year, month, day, hour, minute)) %>%
+  group_by(origin) %>%
+  arrange(new_sched_dep_time) %>%
+  mutate(prev_flight_dep_delay = lag(dep_delay)) %>%
+  lm(dep_delay ~ prev_flight_dep_delay,.) %>% summary()
+```
+
+We find that there is a weak correlation between the delays, but that due to the number of rows, we can be highly confident of a predictive relationship.
+
+# 6. Find all destinations that are flown by at least two carriers. Use that information to rank the carriers.
+```{r}
+flights %>%
+  group_by(dest) %>%
+  filter(n_distinct(carrier)>=2) %>%
+  group_by(carrier) %>%
+  summarise(possible_transfers = n_distinct(dest)) %>%
+  arrange(desc(possible_transfers))
+```
+
