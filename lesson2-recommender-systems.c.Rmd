@@ -261,7 +261,6 @@ Now do it for all users with `lapply`
 ```{r}
 lapply(sorted_my_users, user_based_recommendations, user_similarities, viewed_movies)
 ```
-
 A variant on the above is a *k-nearest-neighbours* approach that bases recommendations *only on k most similar users*. This is faster when there are many users. Try implement this as an exercise.
 
 
@@ -276,8 +275,6 @@ testing <- viewed_movies[-intrain,]
 ```
 
 ```{r}
-library(caret)
-
 data.train <- cbind(rownames(viewed_movies), as.data.frame(viewed_movies))
 colnames(data.train) <- paste(rep("m",ncol(data.train)),c(1:ncol(data.train)),sep="")
 names(data.train)[1] = "users"

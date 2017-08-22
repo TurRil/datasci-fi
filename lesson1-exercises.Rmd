@@ -1,5 +1,5 @@
 ---
-title: "lesson1-exercises"
+title: "Lesson 1 - Exercises"
 author: "Corné Oosthuizen - OSTAND005"
 date: "17 August 2017"
 output: html_document
