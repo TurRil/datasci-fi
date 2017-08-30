@@ -1,6 +1,6 @@
 ---
 title: "Lesson 2 - Exercises"
-author: "Corné Oosthuizen - OSTAND005"
+author: "Corn? Oosthuizen - OSTAND005"
 date: "21 August 2017"
 output: html_document
 ---
@@ -11,6 +11,13 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r, echo=TRUE, eval = TRUE}
 suppressMessages(library(tidyverse))
+
+load("output/recommender.RData")
+
+sorted_my_users <- as.character(unlist(viewed_movies[,1]))
+viewed_movies <- as.matrix(viewed_movies[,-1])
+row.names(viewed_movies) <- sorted_my_users
+
 ```
 
 ## Exercises
@@ -29,7 +36,7 @@ cosineDist <- function(x) {
 }
 
 b <- cosineDist(viewed_movies)
-row.names(b) <- row.names(viewed_movies)
+row.names(b) <- row.names(viewed_movies) # user by user
 colnames(b) <- row.names(viewed_movies)
 #b
 ```
@@ -37,40 +44,15 @@ colnames(b) <- row.names(viewed_movies)
 2. Implement a k-nearest-neighbours version of item-based collaborative filtering.
 
 ```{r}
-library(caret)
 
-load("output/recommender.RData")
-```
+#
+#knn_ids <- c(names(sort(user_similarities["149",], decreasing = T))[1:5]) # does not include 149
+# "303" "200" "177" "408" "426"
 
-```{r}
-set.seed(2)
+knn_ids <- c(names(sort(b["149",], decreasing = T))[2:6]) # gives us 149 as the first one
+# "303" "200" "177" "408" "426"
 
-knn.df   <- viewed_movies[sample(nrow(viewed_movies)),]
-knn.df$userId <- as.factor(knn.df$userId)
-
-train.df <- knn.df[1:as.integer(0.7*30),]
-test.df  <- knn.df[as.integer(0.7*30 +1):30,]
-
-control <- trainControl(method = "cv", number = 10)
-metric <- "Accuracy"
-
-fit.knn <- train(userId ~ ., data = viewed_movies, method = "knn", metric = "RMSE", trControl = control)
-```
-
-
-
-
-data.train <- cbind(rownames(viewed_movies), as.data.frame(viewed_movies))
-colnames(data.train) <- paste(rep("m",ncol(data.train)),c(1:ncol(data.train)),sep="")
-names(data.train)[1] = "users"
-
-trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
-
-knn_fit <- train(users ~ . , data = data.train, method = "knn",
- trControl=trctrl,
- preProcess = c("center", "scale"),
- tuneLength = 10)
-
+viewed_movies[knn_ids,]
 ```
 
 3. Adapt the `recommender_accuracy()` function so that it can be used with an arbitrary number of users and movies.

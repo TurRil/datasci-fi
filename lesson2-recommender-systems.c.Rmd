@@ -151,6 +151,15 @@ c["149",]
 
 Let's see if this makes sense from the viewing histories. Below we show user 149's history, together with the user who is most similar to user 149 (user 303) and another user who is very dissimilar (user 236).
 
+```{r}
+## KNN
+
+knn_ids <- c(names(sort(user_similarities["149",], decreasing = T))[1:5])
+
+viewed_movies[knn_ids,]
+
+```
+
 
 ```{r}
 viewed_movies[c("149","303","236"),]
