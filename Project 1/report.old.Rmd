@@ -1,0 +1,238 @@
+---
+title: "Project 1"
+author: "Corné Oosthuizen - OSTAND005"
+date: "21 August 2017"
+output: html_document
+  html_document:
+    toc: yes
+    toc_depth: 2
+  comment: '>'
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, eval = TRUE, echo = FALSE}
+suppressWarnings( suppressMessages(library(tidyverse)) )
+suppressWarnings( suppressMessages(library(tidytext)) )
+suppressWarnings( suppressMessages(library(stringr)) )
+suppressWarnings( suppressMessages(library(rvest)) )
+```
+
+# Introduction
+
+The project is to build a recommender system for [GetWine.co.za(http://www.getwine.co.za)](http://www.getwine.co.za), an online wine retailer. The data provided consists of a 1 000 users and their purchase orders for a selected period. Each order can consist of a number of items. Using this history and the details of the products we will construct and compare recommendation systems for use on the web site. To that end the recommendation systems might differ for each of the following scenarios:
+
+## Scenarios
+
+* As a user when I am viewing a products details, I would like to see recommendations of other products.</br>
+  These can be chosen according to product attributes or what other users bought when they purchased this product.<br/>
+  
+  
+
+* Item 2
+
+
+# Dataset
+
+The provided dataset 
+
+
+```{r, eval = TRUE, echo = FALSE}
+# Load the dataset from a stored object - orders, orders.items, product.details
+
+load("data/starting_data.RData")
+```
+
+
+## Order information
+
+
+
+
+```{r, eval = TRUE, echo = FALSE}
+
+orders.combined <- suppressMessages(left_join(orders, orders.items)) %>% 
+                      filter(order_total > 0, products_price > 0) %>%
+                      select(customers_id, products_name, products_price, products_quantity) %>%
+                      group_by(customers_id, products_name) %>%
+                      summarise(products_quantity = sum(products_quantity)) %>%
+                      arrange(products_name)
+
+orders.combined
+```
+
+order with total > 0 - special sales / barter trade
+
+drop everything order.items price <= 10
+
+look at wines more than price >= 180
+
+```{r}
+# Which ones can't we find as products (data incorrect in order table)
+
+replace_list <- c("Raka Sauvignon Blanc", "Raka Sauvignon Blanc 2017",
+                  "Buitenverwachting Buiten Blanc 2016", "Buitenverwachting Buiten Blanc",
+                  "Vondeling Cabernet Sauvignon", "Vondeling Cabernet Sauvignon 2014",
+                  "Vondeling Cabernet Sauvignon case of 6 bottles", "Vondeling Cabernet Sauvignon 2014",
+                  "Theuniskraal Ixia Shiraz 2013"," Theuniskraal Ixia Shiraz",
+                  "Theuniskraal Ixia Shiraz 2016"," Theuniskraal Ixia Shiraz",
+                  "Villiera Sauvignon Blanc", "Villiera Sauvignon Blanc 2016",
+                  "Saronsberg Provenance Shiraz 2015", "Saronsberg Provenance Shiraz",
+                  "Raka Sauvignon Blanc 2016", "Raka Sauvignon Blanc 2017",
+                  "Diemersdal Sauvignon Blanc 2017", "Diemersdal Sauvignon Blanc",
+                  "Leopards Leap Merlot 2016", "Leopards Leap Merlot",
+                  "Haute Cabriere Chardonnay/Pinot Noir 2016", "Haute Cabriere Chardonnay/Pinot Noir",
+                  "Paradyskloof Grenache, MourvÃ©dre & Shiraz 2015", "Paradyskloof Grenache, Mourvedre & Shiraz 2015",
+                  "Paradyskloof GrenachÃ© RosÃ© 2016", "Paradyskloof Grenache Rose 2016",
+                  "De Grendel RosÃ©", "De Grendel Rosé",
+                  "Brampton Sauvignon Blanc 2016 - Veritas Gold", "Brampton Sauvignon Blanc",
+                  #"Capaia Merlot/Cabernet Sauvignon 2014", "Capaia Merlot/Cabernet Sauvignon",
+                  "Cederberg Chenin Blanc 2016", "Cederberg Chenin Blanc 2017",
+                  "Theuniskraal Semillon/Chardonnay 2015", "Theuniskraal Semillon/Chardonnay",
+                  "Secateurs Chenin Blanc by Adi Badenhorst 2016","Secateurs Chenin Blanc by Adi Badenhorst")
+
+product.replace <- data.frame(matrix(replace_list, ncol=2, byrow=TRUE), stringsAsFactors = FALSE) %>% setNames(c("from", "to"))
+#product.replace
+
+orders.tojoin <- orders.combined
+for (i in 1:nrow(product.replace)) {
+   orders.tojoin <- orders.tojoin %>% 
+                      mutate(products_name = replace(products_name, 
+                                                     products_name == product.replace[i,]$from, 
+                                                     product.replace[i,]$to))
+}
+
+```
+
+```{r, echo = FALSE, eval = TRUE}
+# Which ones can't we find as products (data incorrect in order table)
+
+replace_list <- c("Raka Sauvignon Blanc", "Raka Sauvignon Blanc 2017",
+                  "Buitenverwachting Buiten Blanc 2016", "Buitenverwachting Buiten Blanc",
+                  "Vondeling Cabernet Sauvignon", "Vondeling Cabernet Sauvignon 2014",
+                  "Vondeling Cabernet Sauvignon case of 6 bottles", "Vondeling Cabernet Sauvignon 2014",
+                  "Theuniskraal Ixia Shiraz 2013"," Theuniskraal Ixia Shiraz",
+                  "Theuniskraal Ixia Shiraz 2016"," Theuniskraal Ixia Shiraz",
+                  "Villiera Sauvignon Blanc", "Villiera Sauvignon Blanc 2016",
+                  "Saronsberg Provenance Shiraz 2015", "Saronsberg Provenance Shiraz",
+                  "Raka Sauvignon Blanc 2016", "Raka Sauvignon Blanc 2017",
+                  "Diemersdal Sauvignon Blanc 2017", "Diemersdal Sauvignon Blanc",
+                  "Leopards Leap Merlot 2016", "Leopards Leap Merlot",
+                  "Haute Cabriere Chardonnay/Pinot Noir 2016", "Haute Cabriere Chardonnay/Pinot Noir",
+                  "Paradyskloof Grenache, MourvÃ©dre & Shiraz 2015", "Paradyskloof Grenache, Mourvedre & Shiraz 2015",
+                  "Paradyskloof GrenachÃ© RosÃ© 2016", "Paradyskloof Grenache Rose 2016")
+
+product.replace <- data.frame(matrix(replace_list, ncol=2, byrow=TRUE)) %>% setNames(c("from", "to"))
+#product.replace
+
+for (i in 1:nrow(product.replace)) {
+   orders.combined <- mutate(orders.combined, 
+                             products_name = replace(products_name, 
+                                                     products_name == as.character(product.replace[i,]$from), 
+                                                     as.character(product.replace[i,]$to)))  %>%
+                       as.data.frame()
+}
+
+# orders.combined <- mutate(orders.combined, products_name = replace(products_name, 
+#                                                                    products_name == )) %>%
+#      as.data.frame()
+# 
+# 
+# Vondeling Cabernet Sauvignon 2014
+actual_wines <- c("Labelled Wine Specials", "Labelled Wines", "Organic Wines", "Miscellaneous - Sundries") #, "Miscellaneous - Wine")
+
+orders.combined$products_name <- as.character(orders.combined$products_name)
+product.details$name <- as.character(product.details$name)
+
+orders.final <- left_join(orders.combined, product.details, by = c("products_name" = "name")) %>% filter(category %in% actual_wines) %>% as.tibble()
+
+# not mapped to product   
+filter(orders.final, is.na(prod_id)) %>%
+   group_by( products_name ) %>%
+   summarise( count = n() ) %>% 
+   arrange( desc(count) )
+
+```
+
+```{r}
+
+levels(product.details$category)
+
+filter(product.details, category == "Miscellaneous - Sundries")
+  
+```
+```{r}
+orders.final %>% select(customers_id, prod_id, products_quantity) %>% arrange(customers_id)
+```
+```{r}
+tmp <-  group_by(orders.final, prod_id, customers_id) %>% 
+        summarise(products_quantity = sum(products_quantity)) %>% arrange(customers_id) %>% as.tibble()
+tmp$customers_id <- as.factor(tmp$customers_id)
+tmp$prod_id <- as.factor(tmp$prod_id)
+tmp$products_quantity <- as.numeric(tmp$products_quantity)
+
+order.matrix <- spread(tmp, prod_id, products_quantity, fill = 0, convert = TRUE) %>% as.matrix()
+row.names(order.matrix) <- levels(tmp$customers_id)
+
+order.matrix <- order.matrix[,-1]
+
+#dim(order.matrix)
+
+cosineDist <- function(x) {
+  as.matrix( tcrossprod(x) / sqrt(rowSums(x^2) %*% t(rowSums(x^2))) ) 
+}
+
+order.matrix_1 <- apply(order.matrix_1, c(1, 2), as.numeric)
+order.matrix_1[order.matrix_1 > 0] <- 1
+
+b <- cosineDist(order.matrix_1)
+row.names(b) <- row.names(order.matrix)
+colnames(b) <- row.names(order.matrix)
+```
+
+
+```{r}
+knn_ids <- names(c(sort(b["163",], decreasing = T)[1:6])) # gives us 149 as the first one
+knn_ids
+
+# who are the most similar users to user 65?
+filter(orders.final, customers_id %in% knn_ids)
+```
+
+
+```{r, echo = FALSE, eval = TRUE}
+
+reviews <- data.frame()
+
+# just get the first two movies to save time
+for(j in orders.links){
+
+  this_movie <- imdbId_to_use$imdbId[j]
+
+    # just get the first 50 reviews
+  for(i in c(0, seq(10, 50, 10))) {
+    link <- paste0("http://www.imdb.com/title/tt",this_movie,"/reviews?start=",i)
+    movie_imdb <- read_html(link)
+    
+    # Used SelectorGadget as the CSS Selector
+    imdb_review <- movie_imdb %>% html_nodes("#pagecontent") %>%
+      html_nodes("div+p") %>%
+      html_text()
+        
+    this_review <- data.frame(imbdId = this_movie, review = imdb_review)
+    reviews <- rbind.data.frame(reviews, this_review)
+  }
+  
+}
+
+```
+
+
+Links:
+
+http://www.getwine.co.za/sitemap.php
+http://www.getwine.co.za/sitemapblog.xml
+

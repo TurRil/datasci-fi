@@ -1,0 +1,319 @@
+---
+title: "Project 1"
+author: "Corné Oosthuizen - OSTAND005"
+date: "21 August 2017"
+output: 
+  html_document:
+    toc: yes
+    toc_depth: 2
+  comment: '>'
+  word_document: default
+---
+<style>
+   h1 { font-size: 28px; }
+   h2 { font-size: 24px; }
+   h4 { margin-bottom: 0; color: #193441;}
+   table h4 { margin-bottom: 0; padding-left: 1em;}
+   table table { margin: 0 1em; width: auto; max-width: auto; }
+   #TOC ul { list-style: none; }
+   #TOC ul ul { list-style: square; }
+
+   h4.date {
+    font-size: 16px;
+    color: #888;
+    margin-bottom: 1em;
+  }
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, eval = TRUE, warning = FALSE)
+options(scipen=1, digits=3)
+```
+
+```{r init}
+suppressWarnings( suppressMessages(library(tidyverse)) )
+suppressWarnings( suppressMessages(library(tidytext)) )
+suppressWarnings( suppressMessages(library(stringr)) )
+suppressWarnings( suppressMessages(library(rvest)) )
+
+# for the report I've run the loading and creation scripts so that when we look at the products and orders we can look at all the data 
+# without having to scrape the website and do the processing. The code segments are included but not run, labeled with the NOT-RUN tag.
+
+# Load the dataset from a stored object - orders, orders.items, product.details
+load("data/starting_data.RData")
+```
+
+# Introduction
+
+The project is to build a recommender system for [GetWine.co.za (http://www.getwine.co.za)](http://www.getwine.co.za), an online wine retailer. The data provided consists of a `r length(unique(orders$customers_id))` customers and their purchase orders for a selected period. Each order can consist of a number of items. Using this history and the details of the products we will construct and compare recommendation systems for use on the web site. To that end the recommendation systems might differ for each of the following scenarios:
+
+## Scenarios
+
+* <strong>As a user when I am viewing a products details, I would like to see recommendations of other products.</strong>
+  <p>
+    This scenario describes a new user (or existing user) that is visiting the site and _not_ signed into the system (not having used the login form or the cookie recognition of user details). In this case we do not know what their preferences are or what kind of products they might have purchased in the past.
+    Our recommendation can ONLY be based on the product (attributes) being viewed and what other users might have bought in a similar situation.
+  </p>
+* <strong>As a _logged_ in user when I am viewing a product details, I would like to see recommendations of other products that matches my purchase history or tastes.</strong>
+  <p>
+    The user is already logged in (recognised by thet site) and from this we can determine their purchase history, the products that we recommend can then be influenced by their purchase history, taste profile, and/or the users details. This gives us the most information to create a more sofisticated recommendation system.
+  </p>
+
+# Dataset
+
+The dataset as provided describes `r length(unique(orders$customers_id))` customers who combined have `r nrow(orders)` orders in a period between `r min(as.Date(orders$date_purchased))` and `r max(as.Date(orders$date_purchased))`. The orders consist of `r nrow(orders.items)` items ordered, each having around `r group_by(orders.items, orders_id) %>% summarise(count = n()) %>% summarise(avg = mean(count))` items. There are `r length(unique(orders.items$products_name))` unique products, some of which describe discounts, barter items which will have to be removed otherwise they could influence our product recommendations.
+
+## Order Information
+
+```{r load-dataset-NOT-RUN, eval = FALSE}
+
+# Read in the order + items information
+orders <- read.csv("orders.csv") %>% as.tibble()
+orders.items <- read.csv("order-items.csv")  %>% as.tibble()
+```
+
+
+The order information consists of fields that describe the customer and the items they have ordered, the data is not in a structure that will allow the easy implementation of recommender models and so we will need to transform it and clean it, but first lets look at what fields they contain:
+
+<table>
+<tr>
+  <td><h4>Order</h4></td>
+  <td><h4>Order Item</h4></td>
+</tr>
+<tr>
+<td>
+
+Field | Description
+------------- | -------------
+customers_id | Unique id of a customer
+customers_gender | The gender of the customer
+customers_dob | Date of birth for that customer
+countries_name | Registration city of the customer
+orders_id | Unique id of a order
+date_purchased | Date of the order
+payment_method | Payment method for this order
+order_total | Total Value of the order
+</td>
+<td style="padding-left: 10px; vertical-align:top;">
+
+Field | Description
+------------- | -------------
+orders_id | Unique order id
+products_name | Name of the product
+products_price | Price paid for the product
+products_quantity | No of items purchased
+
+</td>
+</tr>
+</table>
+
+Cleaning the data we can remove the orders with a `order_total` value of 0 or less (barter), we can also remove all items with a `products_price` of 0 or less. We can then combine the orders and items into a single table that we can use as a data frame for all our recommendation models.
+
+!!! details about combined object
+
+
+## Product Information
+
+The only information that we have about the products is the name and price as provided by the order items table. To obtain more information we will ahve to refer to the website (If we had access to the product database this information can be obtained directly).
+
+In most cases having a e-commerce website the various products and pages would be marked up into a standardised format for search engines to easily map the products to their respective pages. In this way when a user searching the web for a term that matches the name of your product the page link will be displayed in the search results and in so doing a new customer is introduced to your web site. Since early 2006 the major search engines have generally ageed to map sites using the Sitemap Protocol v0.9 ((https://www.sitemaps.org/index.html)[https://www.sitemaps.org/index.html]).
+
+The Getwine web site has a sitemap defined at (http://www.getwine.co.za/sitemapblog.xml)[http://www.getwine.co.za/sitemapblog.xml] that follows this protocol and it includes a link to a PHP page that lists all the products (the `sitemapblog.xml` should really only contain links to the blog article and a seperate `sitemap.xml` file should define a `urlset` for the site and a `url` element for each product; to properly conform to the protocol). In this case we can use the link (http://www.getwine.co.za/sitemap.php)[http://www.getwine.co.za/sitemap.php]) to give us a list of links to the products in the site.
+
+Example Links extracted from the sitemap file:
+```{html}
+A. <a href="http://www.getwine.co.za/index.php?main_page=product_info&cPath=22_2_18&products_id=29">Durbanville Hills Sauvignon Blanc</a>
+B. <a href="http://www.getwine.co.za/index.php?main_page=index&cPath=48_55">Red Wines</a>
+C. <a href="http://www.getwine.co.za/index.php?main_page=blog_article&art_id=20">Getwine Personalised Labels</a>
+```
+
+The structure of the link provides us with some usefull information:
+
+1. `products_id` refers to a unique identifier for that product.
+2. `main_page` refers to where the page is located within the site, we are mostly intrested in the `product_info` links.
+3. the `cPath` parameter gives us a indication to the grouping that a product might have, using this and the the `main_page=index` key-value it is possible to construct a category and type definition for each product.
+
+```{r read-website-NOT-RUN, eval = FALSE}
+
+# read the website and construct the product.details object - more info in "get_product_information.R"
+
+page.sitemap <- read_html("http://www.getwine.co.za/sitemap.php")
+
+# save for later use
+fileConn <- file("data/source_www.getwine.co.za_sitemap.php.html")
+write(as.character(page.sitemap), fileConn)
+close(fileConn)
+
+
+# Select the links in the table but only those that point to product_info 
+page.productLinks <- html_nodes(page.sitemap, css="tr td a[href*='product_info']")
+
+regexp <- '.*<a.*href="(.*?)"*>(.*)<\\/a>.*';
+
+page.links <- page.productLinks %>% 
+  str_match(pattern = regex(regexp)) %>% .[,c(3,2)] %>% # select href and text from <a href="2">3</a> - swap
+  data.frame(matrix(ncol=2, byrow=TRUE)) %>% 
+  setNames(c("products_name", "rawlink", "empty1", "empty2")) %>% as.tibble() %>%
+  mutate(link = str_replace_all(string = rawlink, pattern = "amp;", replacement = "")) %>% 
+  select(products_name, link)
+
+
+# Web scrape the products from the site for each of the products in our list
+# then save it to a file for later easy access.
+for(j in 1:as.numeric(count(page.links))) {
+  
+  prod_id <- str_extract(page.links[j,]$link, "(\\d*)$")
+  destfile <- paste0("data/products/", prod_id ,".html")
+  
+  if(!file.exists(destfile)) {  
+
+    raw <- read_html(as.character(page.links[j,]$link))
+    
+    fileConn <- file(destfile)
+    write(as.character(raw), fileConn)
+    close(fileConn)
+  }
+}
+
+# Extract the details from a page
+
+
+# TODO: copy from get_product_information.R
+
+page.duplicateLinks <- page.links[duplicated(page.links$products_name)|duplicated(page.links$products_name, fromLast=TRUE),] %>% 
+  mutate(prod_id = str_extract(link, "(\\d*)$"), keep = !(prod_id %in% c(10438, 6589, 6607, 1435, 1436, 1437, 1439, 1440, 10633, 10521, 10635))) %>%
+  arrange(products_name, prod_id)
+
+```
+
+Out of the sitemap page we can get `r nrow(page.links)` links, unfortunately probably due to products being loaded and moved around from group to group and because we are using the names to match against order items we need to remove the `r nrow(filter(page.duplicateLinks, !keep))` duplicate links that exist in this dataset. Fortunately they are few enought to manually decide which to keep.
+
+```{r}
+page.duplicateLinks
+```
+The product details now contain `r nrow(product.details)` products in `r length(levels(product.details$category))` categories and `r length(levels(product.details$type))` types. The categories consist of:
+
+```{r}
+group_by(product.details, category) %>% summarise(count = n())
+
+```
+
+Removing some of these categories will help to reduce the list of products to the same type and help to give a more accurate recommendation for a particular wine. These categories will be removed _Gifts_, _Gift Vouchers_, _Personalised Labels_, _Miscellaneous - Sundries_, _Miscellaneous - Wine_ and _Craft Beer_. The _Mixed Cases_ describe wines that are combined into a case that can be bought and it is difficult at this point to map the wines contained in each box to a particular product in our list, so for now we will also remove the products that fall into this category.
+
+```{r step1}
+# removing categories we don't want
+product.details.step1 <- filter(product.details, !(category %in% c("Mixed Cases","Gift Vouchers","Gifts", "Personalised Labels", "Miscellaneous - Sundries", "Miscellaneous - Wine", "Craft Beer")))
+
+group_by(product.details.step1, category) %>% summarise(count = n())
+```
+
+This leaves us with `r nrow(product.details.clean)` products, the category can be simplified by creating a new variable for `labelled` and `special` and `organic` taking into account that a `organic` wine is also labelled and could be marked as special.
+
+```{r step2}
+
+product.details.step2 <- mutate(product.details.step1, labelled !(category %in% c("Mixed Cases","Gift Vouchers","Gifts", "Personalised Labels", "Miscellaneous - Sundries", "Miscellaneous
+
+
+head(group_by(product.details, type) %>% summarise(count = n()), n = 30)
+```
+
+```{r}
+
+z <- product.details.final %>% select(prod_id, type, flavor, price) %>% arrange(prod_id) #flavor, price, discount, labelled, special, organic
+z$price <- as.numeric(z$price)
+#z$discount <- as.numeric(z$discount)
+
+rec.product_dist <- cluster::daisy(z[,-1], metric = "gower", stand = TRUE, weights = c(1, 0.8, 0.1)) %>% 
+                    as.matrix()
+
+row.names(rec.product_dist) <- as.character(z$prod_id)
+colnames(rec.product_dist) <- as.character(z$prod_id)
+
+for( i in 1:length(test.wines)) {
+
+ z <- head(sort(rec.product_dist[ test.wines[i], ], decreasing = T), n = 3) %>% as.data.frame()
+ z <- cbind(z, row.names(z))
+ names(z) <- c("score", "prod_id")
+ x <- left_join(z, product.details.final) %>% mutate(xname = paste0(name," : ", type," - ",flavor, " (R",price,")")) %>% select(xname, score)
+ 
+ names(x) <- c( getProduct(test.wines[i]), "score")
+ print.data.frame(x)
+}
+```
+
+
+```{r}
+library(caret)
+
+train.knn <- product.details.final %>% select(price, discount, type, flavor, labelled, special, organic)
+# anyNA(train.knn)
+
+trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+
+
+knn_fit <- train(flavor ~ ., data = train.knn, method = "knn",
+ trControl=trctrl,
+ preProcess = c("center", "scale"),
+ tuneLength = 10)
+
+
+# Select a random white and a random white wine
+red_wines <- product.details.final %>% filter(type == "Red Wine")
+random_red   <- as.integer(runif(5, 1, nrow(red_wines)))
+
+white_wines <- product.details.final %>% filter(type == "White Wine")
+random_white   <- as.integer(runif(5, 1, nrow(white_wines)))
+
+predict.red <- red_wines[random_red, ] %>% select(price, discount, type, flavor, labelled, special, organic)
+predict.white <- white_wines[random_white, ] %>% select(price, discount, type, flavor, labelled, special, organic)
+
+test_pred <- predict(knn_fit, newdata = predict.red)
+test_pred
+
+confusionMatrix(test_pred, predict.red$flavor )
+
+```
+
+
+
+```{r}
+
+#Similar to a specific user
+
+tmp <-  orders.valid %>%
+        group_by(prod_id, customers_id) %>% 
+        summarise(products_quantity = sum(products_quantity)) %>% as.tibble()
+
+tmp$customers_id <- as.factor(tmp$customers_id)
+tmp$prod_id <- as.factor(tmp$prod_id)
+tmp$products_quantity <- as.numeric(tmp$products_quantity)
+
+order.matrix <- spread(tmp, prod_id, products_quantity, fill = 0, convert = TRUE) %>% as.matrix()
+
+dim(order.matrix)
+length(tmp$prod_id)
+
+row.names(order.matrix) <- levels(tmp$customers_id)
+colnames(order.matrix) <- tmp$prod_id
+
+order.matrix_1 <- order.matrix[,-1]
+
+
+
+
+order.matrix_1 <- apply(order.matrix_1, c(1, 2), as.numeric)
+order.matrix_1[order.matrix_1 > 0] <- 1
+
+b <- cosineDist(order.matrix_1)
+row.names(b) <- row.names(order.matrix)
+colnames(b) <- row.names(order.matrix)
+```
+
+
+```{r}
+knn_ids <- names(c(sort(b["314",], decreasing = T)[2:6])) # gives us 149 as the first one
+knn_ids
+
+# who are the most similar users to user 65?
+filter(orders.final, customers_id %in% knn_ids) %>% group_by(name)
+```

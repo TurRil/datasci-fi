@@ -1,0 +1,37 @@
+have a good look at the data and decide what you want to do
+  cleaning
+    - trim where users only buy one type of wine
+    - one purchse
+    
+start small
+  item/user-based knnn, no extra data
+  choose a subset of the data if need to
+                                    
+add more detail as you go
+  matrix factorization - might need sparse matrix package
+  extra info on users can be included (like a bias term, sort of)
+  extra info on wine can be scraped
+  neural networks
+  
+Dont ignore report writing
+  
+  
+  
+Kaggle problem
+  
+  Same story
+  
+  have a good look at the data
+    decide what you want to do
+    
+  
+  start small dont need to look at all the data
+  
+  add more detail as you go
+  
+Decide on what your skill and what you want to learn
+  forecasting individual series
+  handlind big dataset
+  doing kaggle problems
+  
+  
