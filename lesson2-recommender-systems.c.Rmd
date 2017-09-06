@@ -273,27 +273,38 @@ lapply(sorted_my_users, user_based_recommendations, user_similarities, viewed_mo
 A variant on the above is a *k-nearest-neighbours* approach that bases recommendations *only on k most similar users*. This is faster when there are many users. Try implement this as an exercise.
 
 
-*** TODO: implement this ***
+```{r}
+
+#
+#knn_ids <- c(names(sort(user_similarities["149",], decreasing = T))[1:5]) # does not include 149
+# "303" "200" "177" "408" "426"
+
+knn_ids <- c(names(sort(b["149",], decreasing = T))[2:6]) # gives us 149 as the first one
+# "303" "200" "177" "408" "426"
+
+viewed_movies[knn_ids,]
+```
+
 ```{r}
 # Exercises:
 # 2. Implement a k-nearest-neighbours version of item-based collaborative filtering.
 
-intrain <- createDataPartition(as.numeric(rownames(viewed_movies)), p = 0.7, list = FALSE)
-training <- viewed_movies[intrain,]
-testing <- viewed_movies[-intrain,]
+# intrain <- createDataPartition(as.numeric(rownames(viewed_movies)), p = 0.7, list = FALSE)
+# training <- viewed_movies[intrain,]
+# testing <- viewed_movies[-intrain,]
 ```
 
 ```{r}
-data.train <- cbind(rownames(viewed_movies), as.data.frame(viewed_movies))
-colnames(data.train) <- paste(rep("m",ncol(data.train)),c(1:ncol(data.train)),sep="")
-names(data.train)[1] = "users"
-
-trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
-
-knn_fit <- train(users ~ . , data = data.train, method = "knn",
- trControl=trctrl,
- preProcess = c("center", "scale"),
- tuneLength = 10)
+# data.train <- cbind(rownames(viewed_movies), as.data.frame(viewed_movies))
+# colnames(data.train) <- paste(rep("m",ncol(data.train)),c(1:ncol(data.train)),sep="")
+# names(data.train)[1] = "users"
+# 
+# trctrl <- trainControl(method = "repeatedcv", number = 10, repeats = 3)
+# 
+# knn_fit <- train(users ~ . , data = data.train, method = "knn",
+#  trControl=trctrl,
+#  preProcess = c("center", "scale"),
+#  tuneLength = 10)
 
 ```
 
@@ -618,13 +629,46 @@ Let's adapt our evaluation function further to include a bias terms for both use
 ```{r}
 ## add an additive bias term for each user and movie
 
-evaluate_fit_l2_bias <- function(x, observed_ratings, lambda){
+evaluate_fit_l2_bias <- function(x, observed_ratings, nrow, ncol, k, lambda, bias = TRUE){
   # extract user and movie factors and bias terms from parameter vector
   user_factors <- matrix(x[1:75],15,5)
   movie_factors <- matrix(x[76:175],5,20)
   # the bias vectors are repeated to make the later matrix calculations easier 
   user_bias <- matrix(x[176:190],nrow=15,ncol=20)
   movie_bias <- t(matrix(x[191:210],nrow=20,ncol=15))
+  
+  # get predictions from dot products + bias terms
+  predicted_ratings <- user_factors %*% movie_factors + user_bias + movie_bias
+  
+  errors <- (observed_ratings - predicted_ratings)^2 
+  
+  # L2 norm penalizes large parameter values (note not applied to bias terms)
+  penalty <- sum(sqrt(apply(user_factors^2,1,sum))) + sum(sqrt(apply(movie_factors^2,2,sum)))
+  
+  # model accuracy contains an error term and a weighted penalty 
+  accuracy <- sqrt(mean(errors[!is.na(observed_ratings)])) + lambda * penalty
+  
+  return(accuracy)
+}
+
+evaluate_fit_l2_bias2 <- function(x, observed_ratings, nrow, ncol, k, lambda, bias = TRUE){
+
+  # extract user and movie factors and bias terms from parameter vector
+  end <- (nrow * k)
+  #message(end)
+  user_factors  <- matrix(x[ 1:end], nrow, k)
+  
+  #message(end + (ncol*k))
+  movie_factors <- matrix(x[ (end+1):(end + (ncol*k)) ], k, ncol)
+  
+  end <- end + (ncol*k)
+  #message(paste0(end," ",(end + nrow)))
+  # the bias vectors are repeated to make the later matrix calculations easier 
+  user_bias <- matrix(x[(end+1):(end + nrow)], nrow = nrow, ncol = ncol)
+  
+  end <- (end + nrow)
+  #message(end)
+  movie_bias <- t(matrix(x[(end+1):(end + ncol)], nrow = ncol, ncol = nrow))
   
   # get predictions from dot products + bias terms
   predicted_ratings <- user_factors %*% movie_factors + user_bias + movie_bias
@@ -647,11 +691,37 @@ Again, rerun the optimization:
 ```{r}
 set.seed(10)
 # optimization step (note longer parameter vector to include bias)
+
 rec3 <- optim(par=runif(220),evaluate_fit_l2_bias,
-              observed_ratings = ratings_wide, lambda = 3e-3, control=list(maxit=100000))
+              observed_ratings = ratings_wide, lambda = 3e-3, control=list(maxit=100000)) 
+
 rec3$convergence
 rec3$value
 ```
+```{r}
+set.seed(10)
+# optimization step (note longer parameter vector to include bias)
+startTime <- Sys.time()
+
+
+  rec4 <- nlm(evaluate_fit_l2_bias2, observed_ratings = ratings_wide, lambda = 3e-3, nrow = 15, ncol = 20, k = 5, p = runif(220), iterlim = 1e4, steptol = 1e-2)
+
+endTime <- Sys.time()
+runTime <- as.numeric(difftime(endTime, startTime, units = "secs"))
+
+rec4$code
+rec4$minimum
+rec4$iterations
+runTime
+```
+code	
+an integer indicating why the optimization process terminated.
+
+1: relative gradient is close to zero, current iterate is probably solution.
+2: successive iterates within tolerance, current iterate is probably solution.
+3: last global step failed to locate a point lower than estimate. Either estimate is an approximate local minimum of the function or steptol is too small.
+4: iteration limit exceeded.
+5: maximum step size stepmax exceeded five consecutive times. Either the function is unbounded below, becomes asymptotic to a finite value from above in some direction or stepmax is too small.
 
 This value isn't comparable to either of the previous values, for the same reason as before: the objective function has changed to include bias terms. Extracting just the RMSE:
 
