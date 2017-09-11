@@ -95,7 +95,7 @@ Let's look at Trump's 20 most common positive words:
 
 ```{r}
 tidy_tweets %>%
-  filter(sentiment == "positive") %>%
+  filter(sentiment == "positive") %>% # only positive
   count(word) %>%
   arrange(desc(n)) %>%
   filter(rank(desc(n)) <= 20) %>%
@@ -109,8 +109,9 @@ and the 20 most common negative words:
 tidy_tweets %>%
   filter(sentiment == "negative") %>%
   count(word) %>%
-  arrange(desc(n)) %>%
-  filter(rank(desc(n)) <= 20) %>%
+  #arrange(desc(n)) %>%
+  #filter(rank(desc(n)) <= 20) %>%
+  top_n(20, wt = n) %>% 
   ggplot(aes(reorder(word,n),n)) + geom_col() + coord_flip() + xlab("")
 ```
 
@@ -127,8 +128,11 @@ sentiments_per_month <- tidy_tweets %>%
 
 
 ```{r}
+ggplot(sentiments_per_month, aes(x = month, y = n, fill = sentiment)) +
+    geom_col() 
+
 ggplot(filter(sentiments_per_month, sentiment != "neutral"), aes(x = month, y = n, fill = sentiment)) +
-  geom_col() 
+    geom_col() 
 ```
 
 There doesn't seem to be any very clear trend here, but the variation in the number of tweets made each month makes it difficult to see. We can improve the visualization by plotting the *proportion* of all words tweeted in a month that were positive or negative. The plot shows the raw proportions as well as smoothed versions of these. 
@@ -144,6 +148,11 @@ sentiments_per_month <- sentiments_per_month %>%
 
 
 ```{r}
+sentiments_per_month %>%
+  ggplot(aes(x = month, y = freq, colour = sentiment)) +
+  geom_line() + 
+  geom_smooth(aes(colour = sentiment))
+
 sentiments_per_month %>% filter(sentiment != "neutral") %>%
   ggplot(aes(x = month, y = freq, colour = sentiment)) +
   geom_line() + 
@@ -157,6 +166,16 @@ We can fit a simple linear model to check with the proportion of negative words 
 model <- lm(freq ~ month, data = subset(sentiments_per_month, sentiment == "negative"))
 summary(model)
 ```
+```{r}
+as.numeric(sentiments_per_month$month)
+
+# first month
+-0.19 + 0.00001605*14365
+
+# last month
+-0.19 + 0.00001605 * max(as.numeric(sentiments_per_month$month))
+```
+
 
 ## Aggregating sentiment over words
 
@@ -268,6 +287,10 @@ bigrams_separated <- bigrams_separated %>%
     
     # remove the opposite sentiment variable, which we don't need any more
     select(-opp_sentiment2)
+
+#check if it is working
+filter(bigrams_separated, word1 %in% negation_words) %>%
+  head(10) %>% select(month, word1, word2, sentiment1, sentiment2)
 ```
 
 Next, we calculate the sentiment of each bigram and join up the words in the bigram again.
@@ -311,6 +334,11 @@ bigrams_separated %>%
     filter(rank(desc(n)) < 20) %>%
     ggplot(aes(reorder(bigram,n),n)) + geom_col() + coord_flip() + xlab("")
 ```
+
+*Disambiguation* refers to the removal of ambiguity by making something clear. Disambiguation narrows down the meaning of words and it's a good thing. This word makes sense if you break it down. Dis means "not," ambiguous means "unclear," and the ending -tion makes it a noun.
+
+miss universe / miss usa - marked as negative - neutral
+no wonder - negative - neutral
 
 ## Exercises
 
