@@ -54,6 +54,7 @@ tweets <- tweets %>%
 # turn into tidy text 
 replace_reg <- "https://t.co/[A-Za-z\\d]+|http://[A-Za-z\\d]+|&amp;|&lt;|&gt;|RT|https"
 unnest_reg <- "([^A-Za-z_\\d#@']|'(?![A-Za-z_\\d#@]))"
+
 tidy_tweets <- tweets %>% 
   filter(!str_detect(text, "^RT")) %>% # remove retweets
   mutate(text = str_replace_all(text, replace_reg, "")) %>% # remove stuff we don't want like links
@@ -165,9 +166,13 @@ We can fit a simple linear model to check with the proportion of negative words 
 ```{r}
 model <- lm(freq ~ month, data = subset(sentiments_per_month, sentiment == "negative"))
 summary(model)
+
+# y = mx + c
+# m = 0.00001764
+# c = 
 ```
 ```{r}
-as.numeric(sentiments_per_month$month)
+#as.numeric(sentiments_per_month$month)
 
 # first month
 -0.19 + 0.00001605*14365
@@ -224,7 +229,7 @@ sentiments_per_tweet %>%
   geom_line() + geom_smooth()
 ```
 
- ## Dealing with negation
+## Dealing with negation
  
 One problem we haven't considered yet is what to do with terms like "not good", where a positive word is negated by the use of "not" before it. We need to reverse the sentiment of words that are preceded by negation words like not, never, *etc*.
  
@@ -343,6 +348,7 @@ no wonder - negative - neutral
 ## Exercises
 
 1. Adverbs like "very", "extremely", "totally", "really", "quite", "marginally", *etc* increase or decrease the magnitude of the sentiment that follows them. Think of a few qualifiers and build these into the analyses above. What are they most positive and negative tweets once these qualifiers have been added? Does it affect the assessment of whether the sentiment of Trump's tweets has changed over time?
+
 2. Is there a relationship between the sentiment of a tweet and its popularity? Are negative tweets less popular than positive ones?
 3. Is there a "day of the week" effect on the number and sentiment of tweets? Are weekends any different to weekdays?
 4. Use the more nuanced *nrc* lexicon, which categorises words as "anger", "fear", *etc* to re-analyse Trump's tweets. Can you pick up anything interesting?
