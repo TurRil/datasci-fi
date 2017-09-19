@@ -1,0 +1,252 @@
+---
+title: "Data Science for Industry - Project 2"
+author: "Corné Oosthuizen - OSTAND005"
+date: "16 September 2017"
+output: 
+  html_document:
+    toc: yes
+    toc_depth: 2
+  comment: '>'
+  word_document: default
+---
+<style>
+   h1 { font-size: 28px; }
+   h2 { font-size: 24px; }
+   h4 { margin-bottom: 0; color: #193441;}
+   table h4 { margin-bottom: 0; padding-left: 1em;}
+   table table { margin: 0 1em; width: auto; max-width: auto; }
+   #TOC ul { list-style: none; }
+   #TOC ul ul { list-style: square; }
+
+   h4.date {
+    font-size: 16px;
+    color: #888;
+    margin-bottom: 1em;
+  }
+</style>
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, eval = TRUE, warning = FALSE, message = FALSE)
+options(scipen=1, digits=3)
+options(repr.plot.width=4, repr.plot.height=3) # set plot size in the notebook
+```
+
+```{r init}
+library(tidyverse)
+library(tidytext)
+library(stringr)
+library(lubridate)
+library(formattable)
+
+# Replace specified values with new values, in a factor or character vector.
+revalue <- plyr::revalue
+
+# Load the data
+load("../data/complaints.RData")
+
+complaints <- complaints %>% 
+  mutate(date = parse_date(date_received, "%m/%d/%Y")) %>%
+  mutate(month = make_date(year(date), month(date)))
+
+# Remove unwanted characters: 
+# - Brackets
+# - XXXX
+# - ellipses, hyphens, slashes
+# - puncuation
+# - urls
+replace_reg <- "\\n|\\(|\\)|\\{|\\}|(XXXX)|(XXX)|(XX)|(X)|RE|&|&amp;|&lt;|&gt;|'s|n\\/a|\\$?([0-9])+|(_+)|-|\\%|\\/|\\.\\.\\.|\177|\032|#|\\@|;|'|,|\\.|\"|http(.*)(.html|.htm|.aspx|.php)"
+unnest_reg <- "([^A-Za-z_\\d#@']|'(?![A-Za-z_\\d#@]))"
+
+# replace contractions
+complaints$consumer_complaint_narrative %<>% 
+      gsub("'m", "am", .) %>%
+      gsub("'re", "are", .) %>%
+      gsub("'ll", "will", .) %>%
+      gsub("'d", "had", .) %>%
+      gsub("n't", "not", .) %>%
+      gsub("wo n't", "would not", .) %>%
+      gsub("ca n't", "cannot", .) %>%
+      gsub(pattern = "\\b\\w{16,}", replacement = "") %>% # remove strings longer than 16 characters
+      gsub(pattern = "(\\w)\\1{2,}", replacement = "\\1") # replace repeating characters 2 or more with single one
+
+complaints.tidy <- complaints %>%
+  mutate(text = str_replace_all(consumer_complaint_narrative, replace_reg, " "), compensated = consumer_compensated) %>%
+  unnest_tokens(word, text, token = "regex", pattern = unnest_reg, to_lower = TRUE) # tokenize
+    
+complaints.no_words <- complaints.tidy %>% group_by(month, id) %>% count(word) %>% summarise(n = sum(n))
+
+complaints.tidy %<>% 
+  anti_join( filter(stop_words, lexicon == "snowball"), by = c("word" = "word")) %>% # remove stop words
+  filter(word != "x") %>%
+  select(month, word, compensated, product, id)      # choose the variables we need
+
+save(complaints.tidy, complaints.no_words, complaints, file = "../data/complaints.tidy.RData")
+```
+Each record/row captures a single complaint, on the following variables:
+
+Field | Description
+------------- | -------------
+product | a broad categorisation of the type of financial product involved (5 categories: bank account or service, credit card, credit reporting, debt collection, mortgage)
+consumer_complaint_narrative | the submitted text explaining the nature of the complaint.
+consumer_compensated | a binary indicator of whether the consumer was compensated (monetarily or non-monetarily) after the complaint.
+date_received | the date the complaint was received
+
+```{r}
+select(complaints, id, product, date, consumer_compensated, consumer_complaint_narrative) %>% 
+  head() %>%
+  formattable(row.names = FALSE)
+```
+
+
+```{r}
+complaints.compensated <- complaints %>% group_by(consumer_compensated) %>% summarise(count = n())
+complaints.compensated
+```
+
+```{r}
+complaints.products <- complaints %>% group_by(product) %>% summarise(count = n())
+complaints.products
+```
+
+a.	Use the bing sentiment dictionary to calculate sentiment scores for the complaints.
+```{r}
+
+pallete.2 <- c("#E97E3B", "#3984B6")
+pallete.3 <- c("#E97E3B", "#85B942", "#3984B6")
+pallete.4 <- c("#CF4F29", "#F3B355", "#264992", "#5ABAD1")
+pallete.6 <- c("#CF4F29", "#F3B355", "#85B942", "#B0DE63", "#264992", "#5ABAD1")
+
+complaints.bing <- complaints.tidy %>% 
+  left_join(get_sentiments("bing")) %>% # add sentiments (pos or neg)
+  select(word, sentiment, everything()) %>%
+  mutate(sentiment = ifelse(is.na(sentiment), "neutral", sentiment))
+
+complaints.bing %>%
+  filter(sentiment == "positive") %>% # only positive
+  count(word) %>%
+  top_n(20, wt = n) %>% 
+  ggplot(aes(reorder(word,n),n)) + geom_col(fill="#5ABAD1", colour="#264992") + coord_flip() + xlab("")
+```
+```{r}
+complaints.bing %>%
+  filter(sentiment == "negative") %>%
+  count(word) %>%
+  top_n(20, wt = n) %>% 
+  ggplot(aes(reorder(word,n),n)) + geom_col(fill="#F3B355", colour="#CF4F29") + coord_flip() + xlab("")
+```
+
+b.	Plot the histogram of sentiment scores.
+
+```{r}
+# sentiments per month all of them
+sentiments.all <- complaints.bing %>%
+  group_by(month, sentiment) %>%
+  summarize(n = n()) 
+
+sentiments.all %>%
+  ggplot(aes(x = month, y = n, fill = sentiment)) +
+    geom_bar(stat="identity", position = "dodge") +
+    scale_fill_manual(values = pallete.3)
+    
+
+sentiments.all %>%
+  filter(sentiment != "neutral") %>%
+  ggplot(aes(x = month, y = n, fill = sentiment)) +
+    geom_bar(stat="identity", position = "dodge") +
+    scale_fill_manual(values = pallete.2)  
+```
+
+```{r}
+
+# sentiments per month byt whether a cosumer was compensated
+sentiments.compensated <- complaints.bing %>%
+  mutate(type = paste0(sentiment, " ", compensated)) %>%
+  group_by(month, sentiment, type) %>%
+  summarize(n = n())
+
+sentiments.compensated %>%
+  ggplot(aes(x = month, y = n, fill = type)) +
+    geom_bar(stat="identity", position = "dodge") +
+    scale_fill_manual(values = pallete.6)
+
+sentiments.compensated %>%
+  filter(sentiment != "neutral") %>%
+  ggplot(aes(x = month, y = n, fill = type, label = n)) +
+    geom_bar(stat="identity", position = "dodge", width = 40) +
+    scale_fill_manual(values = pallete.4) + 
+    geom_text(size = 3, position = position_stack(vjust = 0.5), family = "Times New Roman")
+```
+```{r}
+# sentiments per month byt whether a cosumer was compensated
+# sentiments.compensated <- complaints.bing %>%
+#   mutate(type = paste0(sentiment, " ", compensated)) %>%
+#   group_by(month, sentiment, type) %>%
+#   summarize(n = n())
+
+complaints.false <- complaints.compensated %>% filter(consumer_compensated == FALSE) %>% select(count) %>% as.numeric()
+complaints.true <- complaints.compensated %>% filter(consumer_compensated == TRUE) %>% select(count) %>% as.numeric()
+
+sentiments.normalized <- sentiments.compensated %>%
+  mutate( n = ifelse( grepl("FALSE",type), n / complaints.false, n / complaints.true))
+
+sentiments.normalized %>%
+  filter(sentiment != "neutral") %>%
+  ggplot(aes(x = month, y = n, fill = type)) +
+    geom_bar(stat="identity", position = "dodge") +
+    scale_fill_manual(values = pallete.4)
+
+```
+```{r, message=TRUE}
+
+# sentiments per month byt whether a cosumer was compensated
+sentiments.product <- complaints.bing %>%
+  mutate(type = paste0(sentiment, " ", product)) %>%
+  group_by(month, sentiment, type) %>%
+  summarize(n = n())
+
+
+for (i in 1:nrow(sentiments.product)) {
+  
+  sentiments.product[i,]$n = sentiments.product[i,]$n / complaints.products[complaints.products$product == str_replace(sentiments.product[i,]$type,"(negative )|(positive )|(neutral )",""),]$count
+}
+
+sentiments.product %>%
+  filter(sentiment == "negative") %>%
+  ggplot(aes(x = month, y = n, fill = type)) +
+    geom_bar(stat="identity", position = "dodge") +
+    scale_fill_manual(values = c("#FDEA6F","#F3B355","#E97E3B","#CF4F29","#723C2C"))
+
+sentiments.product %>%
+  filter(sentiment != "neutral") %>%
+  ggplot(aes(x = month, y = n, fill = type)) +
+    geom_bar(stat="identity", position = "dodge") + 
+    scale_fill_manual(values = c("#B7DFCB","#5ABAD1","#3984B6","#264992","#161F63"))
+```
+
+
+```{r}
+
+
+# sentiments per month byt whether a cosumer was compensated
+test <- complaints.bing %>% group_by(month) %>% count(sentiment, product, compensated)
+
+
+test %>%
+  filter(sentiment != "negative") %>%
+  ggplot(aes(x = month, y = n, group = interaction(product, compensated), fill = interaction(product, compensated))) +
+    geom_bar(stat="identity", position = "dodge") +
+    scale_fill_discrete(name="Product + Compensated")
+```
+
+
+c.	Do topic modelling using LDA, The user should be able to specify how many topics they want to use (say between 2 and 5 topics).
+
+d.	Extract and plot the word-topic probabilities (i.e. “beta”) for the 15 most popular words in each topic. 
+
+
+
+a.	Return the sentiment score of the new complaint
+b.	Return the quantile of the sentiment score of the new complaint (i.e. the relative rank compared to other complaints)
+c.	Return the topic probabilities for the new complaint (i.e. “gamma”: see the use of the “posterior” function given in the help file for the LDA function “?LDA”). 
+
+

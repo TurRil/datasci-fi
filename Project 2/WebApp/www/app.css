@@ -1,0 +1,135 @@
+h2 {
+    font-size: 2em;
+}
+
+h2 span {
+    font-size: 75%;
+    color: #848484;
+}
+
+h4 span {
+    font-size: 75%;
+    color: #446e9b;
+}
+
+.tabbable .tab-content {
+    padding-top: 10px;
+}
+
+.well {    
+    border-width: 0;
+    border-right: 1px solid #ccc;
+    border-radius: 0;
+    background-color: #fcfcfc;
+    box-shadow: none;
+    margin-top: 42px;
+}
+
+.well div.inline {
+    display: block;
+    margin-bottom: 10px;
+}
+
+.well div.inline span,
+.well div.block span {
+    display: inline-block;
+    margin-right: 10px;
+    margin-bottom: 5px;
+}
+
+.well div.block {
+    display: block;
+    margin-bottom: 10px;
+}
+
+.well div.block div {
+    width: 100%;
+    max-width: 210px;
+}
+.well div.block > a {
+    display: block;
+    width: 100%;
+    max-width: 210px;
+    margin-bottom: 5px;
+    margin-left: 10px;
+}
+
+.well div.inline-block {
+    padding: 0 10px;
+    margin-left: 10px;
+}
+
+.well div.inline-block a {
+    width: 100%;
+    max-width: 80px;
+    display: inline-block;
+    margin-bottom: 5px;
+}
+
+.well div.inline-block a:last-child {
+    float: right;
+}
+
+.well div.inline a.label[rel=all] {
+    margin-left: 14px;
+}
+
+a.label {
+    display: inline-block;
+    font-size: 1em;
+    color: #848484;
+    font-weight: normal;
+    padding: .3em .7em .4em;
+    -webkit-transition: all 0.2ms;
+    -moz-transition: all 0.2ms;
+    transition: all 0.2ms;
+}
+
+a.label:hover,
+a.label:active {
+    color: #444;
+    background-color: #eee;
+}
+
+a.label.label-primary {
+    color: #fff;
+}
+
+a.label.label-primary:hover, 
+a.label.label-primary:active {
+    color: #fff;
+    background-color: #5bc0de;
+}
+
+a.help {
+    display: inline-block;
+    width: 40px;
+    height: 40px;
+    margin: 20px 20px 10px 0;
+    border-radius: 4px;
+}
+
+a.help:hover,
+a.help:active {
+    background-color: #EEEEEE;
+}
+
+a.help img {
+    width: 96%;
+    height: 96%;
+}
+
+div.help {
+    display: none;
+    width: 480px; 
+    padding: 8px; 
+    background: #fff; box-shadow: 4px 4px 4px rgba(0,0,0,0.3);
+}
+
+div.help hr {
+    margin-top: 0px;margin-bottom: 5px;
+}
+
+div.help ol {
+    font-size: 90%;
+}
