@@ -15,6 +15,8 @@ library(markdown)
 jscode <- "
 shinyjs.init = function() {
 
+var timerId = 0;
+
 function clickWrap(id, el, input) {
   if (el.attr('rel') == 'all') {
     $('#'+ id +' a[rel!=all][rel!=none]').addClass('label-primary');
@@ -25,8 +27,10 @@ function clickWrap(id, el, input) {
   }
   
   $('#'+ input).val( $('#'+ id +' a.label-primary').map(function(){return $(this).attr('rel');}).get().join(',') );
-  $('#'+ input).change();
 
+  if (timerId != 0) clearTimeout(timerId);
+
+  timerId = setTimeout(function(){ $('#'+ input).change(); }, 500);
 }
 
 $(document).on('click', '#isCompensated a', function(event) {
