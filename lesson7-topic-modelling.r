@@ -3,7 +3,7 @@ library(tidyverse)
 library(tidytext)
 library(topicmodels)
 
-load("my_imdb_reviews.RData")
+load("data/my_imdb_reviews.RData")
 
 reviews <- as.tibble(reviews)
 reviews$review <- as.character(reviews$review) 
@@ -77,10 +77,10 @@ reviews_gamma <- reviews %>%
 
 reviews_gamma %>% group_by(imdbId) %>% summarize(ntopic1 = sum(topic_1 > 0.5))
 
-reviews_gamma %>% filter(imdbId == "0075314") %>% arrange(desc(topic_1)) %>% head(3)
+reviews_gamma %>% filter(imdbId == "0075314") %>% arrange(desc(topic_1)) %>% select(imdbId, topic_1, topic_2) %>% head(3)
 
-reviews_gamma %>% filter(imdbId == "0075314") %>% arrange(topic_1) %>% head(3)
+reviews_gamma %>% filter(imdbId == "0075314") %>% arrange(topic_1) %>% select(imdbId, topic_1, topic_2) %>% head(3)
 
-reviews_gamma %>% filter(imdbId != "0075314") %>% arrange(topic_1) %>% head(3)
+reviews_gamma %>% filter(imdbId != "0075314") %>% arrange(topic_1) %>% select(imdbId, topic_1, topic_2) %>% head(3)
 
-reviews_gamma %>% filter(imdbId != "0075314") %>% arrange(topic_2) %>% head(3)
+reviews_gamma %>% filter(imdbId != "0075314") %>% arrange(topic_2) %>% select(imdbId, topic_1, topic_2) %>% head(3)
