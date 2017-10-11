@@ -1,0 +1,158 @@
+---
+title: "STA5073Z - Data Science for Industry - Final exam (computer part)"
+author: 'Your-name-here'
+date: "26/09/2017"
+output: html_document   # or pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, warning = FALSE, message = FALSE)
+```
+
+**Please read the following instructions carefully**
+
+> You will have 1h20 to complete this section. Answer all questions. Write your code in the code blocks below each question. Your final document should be able to be knitted into an R Markdown document. 
+
+> Save your submission to your desktop as "*your-student-number*-dsfi-exam.Rmd". Email your final submission to indurbach@gmail.com. Save your work often!
+
+> The goal in this exam is to scrape the story "The Mercer Boys' Mystery Case", by Albert Capwell Wyckoff from the web, to extract certain chapters from the book, and to do some sentiment analysis on these chapters. Specifically, you will construct bigrams and then extract "sentiment pairs" from those bigrams. A "sentiment pair" contains the sentiment attached to each word in the bigram. Finally, you will identify which sentiment pairs occur most frequently, and extract those bigrams that are examples of the most common sentiment pair. 
+
+> The questions below break this overall goal into smaller steps. First, load the packages `tidytext`, `rvest`, and `tidyverse`.
+
+```{r, message=F, warning=F}
+library(tidyverse)
+library(tidytext)
+library(rvest)
+library(stringr)
+library(magrittr)
+
+revalue <- plyr::revalue
+```
+
+#### Question 1 [2 marks]
+Write `either_na()`, a function that takes two vectors of the same length and returns a logical vector (also of the same length) indicating if either of the same element/position in both vectors is NA.
+
+```{r}
+
+# Return new vector with NA removed
+either_na <- function(x, y) {
+  tmp <- as.tibble( cbind(x, y) )
+  colnames(tmp) <- c("x","y")
+  tmp <- mutate(tmp, valid = ifelse(is.na(x), 0, ifelse(is.na(y), 0, 1)))
+
+  return ( select(tmp, valid) )
+}
+
+# test cases
+test.x <- c("a","b",NA,"d","e")
+test.y <- c(1,NA,3,NA,5)
+
+either_na(test.x, test.y)
+```
+
+#### Question 2 [4 marks]
+Scrape the web page at `http://www.gutenberg.org/files/55560/55560-0.txt`, which contains plain text of the story "The Mercer Boys' Mystery Case", by Albert Capwell Wyckoff. Note: if you find that you can't scrape it, you can save the text file and read it in as text (you will then not get the marks for this question).
+
+```{r}
+# creates a tibble data object with book text as 'value'
+book <- read_html("https://www.gutenberg.org/files/55560/55560-0.txt", encoding = "UTF-8") %>% 
+        html_text(trim = TRUE) %>%
+        as.tibble()
+
+```
+
+#### Question 3 [6 marks]
+Use the **tidytext** package to split the text into chapters. Extract the first 10 chapters of the book. Note: if you find that you can't do this question using **tidytext**, you can do it manually by cutting-and-pasting from the text file (you will then not get the marks for this question).
+
+```{r}
+chapters <- unnest_tokens(book, chapters, book, token = "regex", pattern = "(Chapter \\d\\d?)") %>% # split large text into chapter chunks
+              select(chapters)
+
+# first item is intro to chapter 1
+# we want: 
+# 1. The Glories of the Past
+# 2. The Class of 1933 Trophy
+# 3. A Mystery Uncovered
+# 4. A Visit to Mr. Long
+# 5. The Alumni Dinner
+# 6. Added Mystery
+# 7. The Trustees’ Meeting
+# 8. An Old Score Settled
+# 9. Terry Engages in an Argument
+# 10. The Eagles Disappear
+
+chapters.use <- chapters[c(2:11),]
+```
+
+#### Question 4 [2 marks]
+Tokenize the text in the extracted chapters into bigrams.
+
+```{r}
+txt.bigrams <- unnest_tokens(chapters.use, bigram, chapters, token = "ngrams", n = 2) %>% # bigram = 2
+                separate(bigram, c("word1", "word2"), sep = " ") # split that into word1 and word2 so we can use it
+
+txt.bigrams$word1 %<>% gsub("[^0-9A-Za-z///' ]", "'", .) # fix for "havenâ€™t
+txt.bigrams$word2 %<>% gsub("[^0-9A-Za-z///' ]", "'", .)
+```
+
+#### Question 5 [6 marks]
+Remove any bigrams in which either word in the bigram is fewer than 5 characters long
+
+```{r}
+txt.filtered <- txt.bigrams %>% 
+                filter(str_length(word1) >= 5, str_length(word2) >= 5) # both must me larger or equal to 5
+```
+
+#### Question 6 [6 marks]
+Use a database join to add the sentiment of each word according to the **nrc** sentiment dictionary provided with the **tidytext** package.
+
+```{r}
+# use nrc to join
+txt.sentiment <- txt.filtered %>% 
+                  left_join(get_sentiments("nrc"), by = c("word1" = "word")) %>% # join to word1
+                  mutate(sentiment1 = sentiment) %>%                             # save word1 sentiment
+                  select(word1, word2, sentiment1) %>%                           # clear  
+                  left_join(get_sentiments("nrc"), by = c("word2" = "word")) %>% # join to word2
+                  mutate(sentiment2 = sentiment) %>%                             # save word2 sentiment
+                  select(word1, word2, sentiment1, sentiment2)                   # final result
+```
+
+#### Question 7 [4 marks]
+Use the `either_na()` function you made in Q1 to remove any bigrams that have missing sentiments for either word in the bigram.
+
+```{r}
+txt.working <- txt.sentiment %>% 
+                filter(either_na(sentiment1, sentiment2) == 1) # if 1 then valid
+```
+
+#### Question 8 [6 marks]
+Create a frequency table counting how many times each pair of sentiments occurs together. Identify which sentiment pair occurs most often.
+
+```{r}
+txt.sentiment.freq <- group_by(txt.working, sentiment1, sentiment2) %>%  
+                        summarise(n = n()) %>% 
+                        arrange(desc(n))
+
+txt.sentiment.top <- txt.sentiment.freq[1,] # select the top 
+
+txt.sentiment.freq %>% head(10) %>% 
+    ggplot(aes(y = n, x = reorder(interaction(sentiment1, sentiment2), n))) + 
+    geom_col() + 
+    coord_flip() + 
+    xlab("Sentiment Pair") + ylab("Number of Occurence") + 
+    labs(title = "Top 10 Sentiment Pairs",
+         subtitle = paste0("Top: ", txt.sentiment.top$sentiment1, ".", txt.sentiment.top$sentiment2, " which occured ", txt.sentiment.top$n, " times"))
+
+```
+
+#### Question 9 [4 marks]
+Extract the unique bigrams associated with the **most common** observed sentiment pair (e.g. if the most common sentiment pair is "angry-negative", then extract all the bigrams that are "angry-negative").
+
+```{r}
+txt.sentiment.filtered_by_top <- txt.working %>% 
+                          filter(sentiment1 == txt.sentiment.top$sentiment1, sentiment2 == txt.sentiment.top$sentiment2)
+
+txt.sentiment.filtered_by_top
+```
+
+
